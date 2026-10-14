@@ -53,7 +53,7 @@ def test_fetcher_retries_then_succeeds_and_writes_cache(tmp_path):
 
 def test_fetcher_failure_is_explicit_and_does_not_use_stale_cache(tmp_path):
     cache = tmp_path / "BTCUSDT_5m.json"
-    cache.parent.mkdir(parents=True)
+    cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text("[]")
     with pytest.raises(MarketDataError, match="failed after 1 attempts"):
         load_binance_klines(cache_dir=tmp_path, retries=0, now_ms=900000,
