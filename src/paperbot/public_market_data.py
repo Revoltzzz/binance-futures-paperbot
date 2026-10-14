@@ -90,28 +90,48 @@ def load_okx_swap_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: i
         raise ValueError(f"OKX swap fallback does not support {symbol}")
     if interval not in OKX_INTERVAL:
         raise ValueError(f"OKX swap fallback does not support interval: {interval}")
-    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 300:
-        raise ValueError("limit must be an integer between 1 and 300")
-    url = OKX_URL + "?" + urlencode({
-        "instId": OKX_SYMBOL[symbol], "bar": OKX_INTERVAL[interval], "limit": limit,
-    })
-    payload = _request_with_retries(url, fetcher or _fetch_json, retries, sleep or time.sleep)
-    if not isinstance(payload, dict) or payload.get("code") != "0":
-        detail = payload.get("msg", "unexpected response") if isinstance(payload, dict) else "unexpected response"
-        raise MarketDataError(f"OKX swap market-data response error: {detail}")
-    rows = payload.get("data")
-    if not isinstance(rows, list) or not rows:
-        raise MarketDataError("Unexpected OKX response: missing data candles")
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be an integer between 1 and 1000")
+    request = fetcher or _fetch_json
+    pause = sleep or time.sleep
+    rows_by_timestamp: dict[int, list] = {}
+    cursor: int | None = None
+    while len(rows_by_timestamp) < limit:
+        page_limit = min(300, limit - len(rows_by_timestamp))
+        params = {"instId": OKX_SYMBOL[symbol], "bar": OKX_INTERVAL[interval], "limit": page_limit}
+        if cursor is not None:
+            params["after"] = cursor
+        url = OKX_URL + "?" + urlencode(params)
+        payload = _request_with_retries(url, request, retries, pause)
+        if not isinstance(payload, dict) or payload.get("code") != "0":
+            detail = payload.get("msg", "unexpected response") if isinstance(payload, dict) else "unexpected response"
+            raise MarketDataError(f"OKX swap market-data response error: {detail}")
+        rows = payload.get("data")
+        if not isinstance(rows, list) or not rows:
+            if rows_by_timestamp:
+                break
+            raise MarketDataError("Unexpected OKX response: missing data candles")
+        page_timestamps: list[int] = []
+        for row in rows:
+            if not isinstance(row, (list, tuple)) or len(row) < 6:
+                raise MarketDataError("Malformed OKX swap candle row")
+            try:
+                start = int(row[0])
+            except (TypeError, ValueError, OverflowError, IndexError) as exc:
+                raise MarketDataError("Invalid OKX swap candle timestamp") from exc
+            rows_by_timestamp[start] = list(row)
+            page_timestamps.append(start)
+        oldest = min(page_timestamps)
+        if cursor is not None and oldest >= cursor:
+            raise MarketDataError("OKX pagination made no progress")
+        cursor = oldest
+        if len(rows) < page_limit:
+            break
     converted = []
-    for row in reversed(rows):
-        if not isinstance(row, (list, tuple)) or len(row) < 6:
-            raise MarketDataError("Malformed OKX swap candle row")
-        try:
-            start = int(row[0])
-            converted.append([start, row[1], row[2], row[3], row[4], row[5],
-                              start + INTERVAL_MS[interval] - 1])
-        except (TypeError, ValueError, OverflowError, IndexError) as exc:
-            raise MarketDataError("Invalid OKX swap candle row") from exc
+    for start in sorted(rows_by_timestamp)[-limit:]:
+        row = rows_by_timestamp[start]
+        converted.append([start, row[1], row[2], row[3], row[4], row[5],
+                          start + INTERVAL_MS[interval] - 1])
     return parse_klines(converted, interval, now_ms=now_ms)
 
 
