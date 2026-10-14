@@ -3,7 +3,7 @@ import pytest
 from paperbot.backtest import run_backtest
 from paperbot.data import demo_candles
 from paperbot.models import Candle, Side
-from paperbot.strategy import EmaCrossStrategy, ema
+from paperbot.strategy import BreakRetestStrategy, EmaCrossStrategy, ema
 
 
 def test_ema_seed_and_smoothing():
@@ -191,4 +191,43 @@ def test_backtest_applies_historical_funding_at_nonstandard_event_timestamp():
     )
     assert result.trades == 1
     assert result.trade_history[0].funding_cost > 0
+
+
+def test_break_retest_strategy_signals_long_only_after_confirmed_retest():
+    candles = [
+        Candle(1, 98, 100, 97, 99),
+        Candle(2, 99, 101, 98, 100),
+        Candle(3, 100, 101, 99, 100.5),
+        Candle(4, 101, 104, 100.5, 103),  # Close above prior resistance.
+        Candle(5, 101.5, 103, 100.9, 102.5),  # Retest and bullish close.
+    ]
+    strategy = BreakRetestStrategy(
+        lookback=3, trend_period=3, retest_bars=2, tolerance_pct=0.002
+    )
+    assert strategy.signal(candles) == Side.LONG
+
+
+def test_break_retest_strategy_does_not_chase_breakout_without_retest():
+    candles = [
+        Candle(1, 98, 100, 97, 99),
+        Candle(2, 99, 101, 98, 100),
+        Candle(3, 100, 101, 99, 100.5),
+        Candle(4, 101, 104, 100.5, 103),
+        Candle(5, 103, 105, 102.5, 104.5),
+    ]
+    strategy = BreakRetestStrategy(
+        lookback=3, trend_period=3, retest_bars=2, tolerance_pct=0.002
+    )
+    assert strategy.signal(candles) is None
+
+
+def test_break_retest_strategy_validates_parameters():
+    with pytest.raises(ValueError, match="lookback"):
+        BreakRetestStrategy(lookback=1)
+    with pytest.raises(ValueError, match="trend_period"):
+        BreakRetestStrategy(trend_period=1)
+    with pytest.raises(ValueError, match="retest_bars"):
+        BreakRetestStrategy(retest_bars=0)
+    with pytest.raises(ValueError, match="tolerance_pct"):
+        BreakRetestStrategy(tolerance_pct=0.1)
 
