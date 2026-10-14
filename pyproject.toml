@@ -12,6 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
+web = ["streamlit>=1.38,<2", "streamlit-autorefresh>=1.0.1", "pandas>=2.0"]
 
 [project.scripts]
 paperbot = "paperbot.cli:main"
