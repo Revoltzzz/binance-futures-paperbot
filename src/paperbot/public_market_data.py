@@ -119,6 +119,8 @@ def load_okx_swap_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: i
                 start = int(row[0])
             except (TypeError, ValueError, OverflowError, IndexError) as exc:
                 raise MarketDataError("Invalid OKX swap candle timestamp") from exc
+            if start in rows_by_timestamp:
+                raise MarketDataError(f"Duplicate OKX swap candle timestamp: {start}")
             rows_by_timestamp[start] = list(row)
             page_timestamps.append(start)
         oldest = min(page_timestamps)
