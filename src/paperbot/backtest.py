@@ -1,9 +1,33 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from .models import Candle, Side
+from .models import Candle, Side, Trade
 from .paper import PaperBroker
 from .strategy import EmaCrossStrategy
+
+
+@dataclass(frozen=True)
+class TradeJournalEntry:
+    entry_time_utc: str
+    exit_time_utc: str
+    side: str
+    entry_price: float
+    exit_price: float
+    quantity: float
+    gross_pnl: float
+    fees: float
+    net_pnl: float
+    exit_reason: str
+    balance_after: float
+
+
+@dataclass(frozen=True)
+class RiskJournalEntry:
+    time_utc: str
+    event: str
+    marked_equity: float
+    balance_after: float
+    message: str
 
 
 @dataclass(frozen=True)
@@ -15,12 +39,19 @@ class BacktestResult:
     wins: int
     losses: int
     max_drawdown_pct: float
+    trade_history: tuple[TradeJournalEntry, ...] = ()
+    risk_events: tuple[RiskJournalEntry, ...] = ()
 
 
 def _utc_session(timestamp: int):
     """Accept Unix timestamps in seconds or milliseconds and return UTC date."""
     seconds = timestamp / 1000 if timestamp > 10_000_000_000 else timestamp
     return datetime.fromtimestamp(seconds, tz=timezone.utc).date()
+
+
+def _utc_iso(timestamp: int) -> str:
+    seconds = timestamp / 1000 if timestamp > 10_000_000_000 else timestamp
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat()
 
 
 def run_backtest(
@@ -32,8 +63,8 @@ def run_backtest(
 
     Uses UTC calendar-day loss limits. When the daily equity loss threshold is
     reached, an open position is closed at that candle's close and new entries
-    are blocked until the next UTC day. This is a simplified paper simulation,
-    not an exchange-grade risk engine.
+    are blocked until the next UTC day. Journal entries are scoped to this run
+    and are not durable storage or an exchange ledger.
     """
     if starting_balance <= 0:
         raise ValueError("starting_balance must be positive")
@@ -50,6 +81,29 @@ def run_backtest(
     session = None
     session_start_equity = float(starting_balance)
     daily_halted = False
+    position_entry_timestamp: int | None = None
+    trade_journal: list[TradeJournalEntry] = []
+    risk_journal: list[RiskJournalEntry] = []
+
+    def record_trade(trade: Trade | None, exit_timestamp: int) -> None:
+        nonlocal position_entry_timestamp
+        if trade is None:
+            return
+        entry_timestamp = position_entry_timestamp
+        trade_journal.append(TradeJournalEntry(
+            entry_time_utc=_utc_iso(entry_timestamp if entry_timestamp is not None else exit_timestamp),
+            exit_time_utc=_utc_iso(exit_timestamp),
+            side=trade.side.value,
+            entry_price=trade.entry_price,
+            exit_price=trade.exit_price,
+            quantity=trade.quantity,
+            gross_pnl=trade.pnl + trade.fees,
+            fees=trade.fees,
+            net_pnl=trade.pnl,
+            exit_reason=trade.reason,
+            balance_after=broker.balance,
+        ))
+        position_entry_timestamp = None
 
     for candle in candles:
         candle_session = _utc_session(candle.timestamp)
@@ -60,19 +114,29 @@ def run_backtest(
 
         if pending_signal is not None and not daily_halted:
             if broker.position is not None and pending_signal != broker.position.side:
-                broker.close_position(candle.open, "signal_reversal")
+                record_trade(broker.close_position(candle.open, "signal_reversal"), candle.timestamp)
             if broker.position is None:
-                broker.open_position(pending_signal, candle.open)
+                opened = broker.open_position(pending_signal, candle.open)
+                if opened is not None:
+                    position_entry_timestamp = candle.timestamp
         pending_signal = None
 
-        broker.on_candle(candle)
+        record_trade(broker.on_candle(candle), candle.timestamp)
         history.append(candle)
 
         equity = broker.equity(candle.close)
-        if broker.risk.daily_loss_limit_hit(session_start_equity, equity):
+        if not daily_halted and broker.risk.daily_loss_limit_hit(session_start_equity, equity):
+            marked_equity = equity
             if broker.position is not None:
-                broker.close_position(candle.close, "daily_loss_limit")
+                record_trade(broker.close_position(candle.close, "daily_loss_limit"), candle.timestamp)
                 equity = broker.balance
+            risk_journal.append(RiskJournalEntry(
+                time_utc=_utc_iso(candle.timestamp),
+                event="daily_loss_limit",
+                marked_equity=marked_equity,
+                balance_after=broker.balance,
+                message="Daily loss threshold reached; new entries blocked until the next UTC day.",
+            ))
             daily_halted = True
 
         if not daily_halted:
@@ -83,7 +147,7 @@ def run_backtest(
             max_dd = max(max_dd, (peak - equity) / peak)
 
     if broker.position is not None and candles:
-        broker.close_position(candles[-1].close, "end_of_data")
+        record_trade(broker.close_position(candles[-1].close, "end_of_data"), candles[-1].timestamp)
 
     ending = broker.balance
     peak = max(peak, ending)
@@ -92,11 +156,13 @@ def run_backtest(
     wins = sum(trade.pnl > 0 for trade in broker.trades)
     losses = sum(trade.pnl <= 0 for trade in broker.trades)
     return BacktestResult(
-        starting_balance,
-        ending,
-        (ending / starting_balance - 1) * 100,
-        len(broker.trades),
-        wins,
-        losses,
-        max_dd * 100,
+        starting_balance=starting_balance,
+        ending_balance=ending,
+        total_return_pct=(ending / starting_balance - 1) * 100,
+        trades=len(broker.trades),
+        wins=wins,
+        losses=losses,
+        max_drawdown_pct=max_dd * 100,
+        trade_history=tuple(trade_journal),
+        risk_events=tuple(risk_journal),
     )
