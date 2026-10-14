@@ -5,6 +5,7 @@ from .binance_data import MarketDataError, load_binance_klines
 from .data import demo_candles, load_csv
 from .news import NewsError, fetch_latest_news, print_news, watch_news
 from .public_market_data import load_okx_funding_rates, load_okx_swap_klines
+from .strategy import BreakRetestStrategy, EmaCrossStrategy
 
 
 def main() -> None:
@@ -26,7 +27,7 @@ def main() -> None:
     parser.add_argument("--interval", default="5m", help="interval for --binance (default: 5m)")
     parser.add_argument("--limit", type=int, default=500, help="completed candle request limit (1-1500)")
     parser.add_argument("--cache-dir", default=".cache/binance", help="directory for downloaded candle cache")
-    parser.add_argument("--balance", type=float, default=1000.0, help="starting paper balance")
+    parser.add_argument("--strategy", choices=("ema", "break-retest"), default="ema",\n                        help="strategy candidate to evaluate; EMA remains the default baseline")\n    parser.add_argument("--balance", type=float, default=1000.0, help="starting paper balance")
     parser.add_argument("--candles", type=int, default=300, help="number of synthetic candles for demo")
     args = parser.parse_args()
     if args.balance <= 0:
@@ -55,11 +56,11 @@ def main() -> None:
         else:
             candles = demo_candles(args.candles)
             source_label = "deterministic synthetic demo candles (not real market data)"
-        result = run_backtest(candles, args.balance, funding_rates=funding_rates)
+        strategy = EmaCrossStrategy() if args.strategy == "ema" else BreakRetestStrategy()\n        result = run_backtest(candles, args.balance, strategy=strategy, funding_rates=funding_rates)
     except (ValueError, OSError, MarketDataError, NewsError) as exc:
         parser.error(str(exc))
     print("PAPER BACKTEST ONLY — no real orders are placed")
-    print(f"Data source: {source_label}")
+    print(f"Data source: {source_label}")\n    print(f"Strategy: {args.strategy}")
     if args.okx:
         print("Funding: historical OKX rates; exchange-specific, not Binance funding rates")
     print(f"Candles: {len(candles)}")
