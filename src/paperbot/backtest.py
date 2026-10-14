@@ -109,19 +109,24 @@ def run_backtest(
         position_entry_timestamp = None
 
     for candle in candles:
-        # USDⓈ-M funding is exchanged at 00:00, 08:00, and 16:00 UTC.
-        # This deterministic approximation uses the configured fixed rate, not historical rates.
+        # The default model assumes USDⓈ-M funding at 00:00, 08:00, and 16:00 UTC.
+        # Historical mode instead applies every supplied event that aligns with a candle,
+        # since other venues may use different funding schedules.
         seconds = candle.timestamp / 1000 if candle.timestamp > 10_000_000_000 else candle.timestamp
-        if seconds % (8 * 60 * 60) == 0 and broker.position is not None:
+        funding_timestamp_ms = candle.timestamp if candle.timestamp > 10_000_000_000 else candle.timestamp * 1000
+        at_default_funding_boundary = seconds % (8 * 60 * 60) == 0
+        if broker.position is not None:
             if funding_rates is None:
-                broker.apply_funding(candle.open)
-            else:
-                funding_timestamp_ms = candle.timestamp if candle.timestamp > 10_000_000_000 else candle.timestamp * 1000
-                if funding_timestamp_ms not in funding_rates:
-                    raise ValueError(
-                        f"Missing historical funding rate at timestamp {funding_timestamp_ms} ms"
-                    )
+                if at_default_funding_boundary:
+                    broker.apply_funding(candle.open)
+            elif funding_timestamp_ms in funding_rates:
                 broker.apply_funding(candle.open, funding_rates[funding_timestamp_ms])
+            elif at_default_funding_boundary:
+                # Preserve an explicit failure for missing expected Binance-style
+                # 8-hour events rather than silently substituting the fixed-rate model.
+                raise ValueError(
+                    f"Missing historical funding rate at timestamp {funding_timestamp_ms} ms"
+                )
 
         candle_session = _utc_session(candle.timestamp)
         if candle_session != session:
