@@ -13,3 +13,4 @@ jobs:
       - run: python -m pip install -e '.[test]'
       - run: pytest -q
       - run: paperbot --candles 300
+      - run: python -m compileall -q src app.py
