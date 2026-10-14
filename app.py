@@ -128,7 +128,9 @@ else:
         )
         if "Kraken spot proxy" in market_source:
             st.warning("Binance and Bybit futures data were unavailable. This is a SPOT-market proxy, not futures data; it excludes futures basis, funding, and contract-specific behavior. Do not use this run to validate a futures strategy.")
-        elif "fallback" in market_source:
+        elif "OKX USDT perpetual swap" in market_source:
+            st.warning("Binance and Bybit were unavailable, so this run uses OKX USDT perpetual-swap candles. Contract specifications and funding behavior can differ by exchange; treat results as exploratory.")
+        elif "Bybit USDT linear perpetual" in market_source:
             st.warning("Binance was unavailable, so this backtest uses Bybit linear-perpetual candles. Do not compare results across providers as if their candles were identical.")
         prices = pd.DataFrame({
             "Time (UTC)": [datetime.fromtimestamp(c.timestamp / 1000, tz=timezone.utc) for c in candles],
