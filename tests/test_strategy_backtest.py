@@ -95,7 +95,7 @@ def test_backtest_journal_records_trade_timestamps_fees_and_exit_reason():
     assert trade.side == "long"
     assert trade.exit_reason == "end_of_data"
     assert trade.fees > 0
-    assert trade.net_pnl == pytest.approx(trade.gross_pnl - trade.fees)
+    assert trade.net_pnl == pytest.approx(trade.gross_pnl - trade.fees - trade.funding_cost)
     assert trade.balance_after == pytest.approx(result.ending_balance)
 
 
@@ -117,3 +117,23 @@ def test_daily_loss_circuit_breaker_is_in_risk_journal():
 def test_candle_ohlc_validation():
     with pytest.raises(ValueError):
         Candle(1, 100, 99, 98, 100)
+
+
+
+def test_backtest_applies_fixed_funding_at_utc_eight_hour_boundary():
+    class FirstCandleLong:
+        def signal(self, history):
+            return Side.LONG if len(history) == 1 else None
+
+    candles = [
+        Candle(1_799_999_400_000, 100, 100.5, 99.5, 100),
+        Candle(1_799_999_700_000, 100, 100.5, 99.5, 100),
+        Candle(1_800_000_000_000, 100, 100.5, 99.5, 100),
+    ]
+    result = run_backtest(candles, strategy=FirstCandleLong())
+    assert result.trades == 1
+    trade = result.trade_history[0]
+    assert trade.funding_cost > 0
+    assert trade.net_pnl == pytest.approx(
+        trade.gross_pnl - trade.fees - trade.funding_cost
+    )
