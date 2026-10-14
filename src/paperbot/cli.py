@@ -27,7 +27,9 @@ def main() -> None:
     parser.add_argument("--interval", default="5m", help="interval for --binance (default: 5m)")
     parser.add_argument("--limit", type=int, default=500, help="completed candle request limit (1-1500)")
     parser.add_argument("--cache-dir", default=".cache/binance", help="directory for downloaded candle cache")
-    parser.add_argument("--strategy", choices=("ema", "break-retest"), default="ema",\n                        help="strategy candidate to evaluate; EMA remains the default baseline")\n    parser.add_argument("--balance", type=float, default=1000.0, help="starting paper balance")
+    parser.add_argument("--strategy", choices=("ema", "break-retest"), default="ema",
+                        help="strategy candidate to evaluate; EMA remains the default baseline")
+    parser.add_argument("--balance", type=float, default=1000.0, help="starting paper balance")
     parser.add_argument("--candles", type=int, default=300, help="number of synthetic candles for demo")
     args = parser.parse_args()
     if args.balance <= 0:
