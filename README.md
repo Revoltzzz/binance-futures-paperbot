@@ -62,6 +62,9 @@ The public market-data endpoint does not require an API key. Network access is r
 paperbot --binance --symbol BTCUSDT --interval 5m --limit 500
 paperbot --binance --symbol ETHUSDT --interval 15m --limit 500 --balance 1000
 paperbot --binance --symbol BTCUSDT --interval 1h --limit 300
+
+# Fetch OKX perpetual candles and historical OKX funding rates for a cost-aware backtest
+paperbot --okx --symbol BTCUSDT --interval 5m --limit 500
 ```
 
 Completed candles are sorted and validated; duplicate timestamps, missing intervals, malformed OHLC data and failed requests stop the run with an explicit error. Downloaded completed candles are cached under `.cache/binance/`. A failed network request does not silently backtest stale cache data.
@@ -77,8 +80,9 @@ paperbot --csv data/BTCUSDT_1h.csv --balance 1000
 - This program is a historical backtest, not a persistent trading loop.
 - Orders are simulated in memory; restarting resets the account.
 - The backtest enforces a UTC-day loss circuit breaker and records when it closes a position and blocks new entries for the rest of that UTC day; this remains a simplified simulation, not an exchange risk engine.
-- Funding payments, liquidation engine, exchange precision/minimum-notional rules, slippage and real-time feeds are not implemented.
-- Fees are approximated using a configurable flat rate; results are not exchange-grade accounting.
+- Funding is modeled using a fixed deterministic assumption by default; the `--okx` mode can use historical realized OKX funding rates for OKX candle backtests. OKX rates are exchange-specific and must not be presented as Binance funding history.
+- Exchange-specific liquidation, mark-price divergence, order-book depth, partial fills, and exchange precision/minimum-notional rules are not fully modeled.
+- Fees are approximated using a configurable flat rate and slippage is a simplified adverse-fill assumption; results are not exchange-grade accounting.
 - No real orders, API credentials, or live trading. Any future execution adapter must be separate, opt-in, testnet-first and independently tested.
 - Never interpret positive backtest results or news headlines as evidence of future profitability.
 
@@ -92,5 +96,5 @@ The paper broker applies configurable execution assumptions from `RiskConfig`:
 - **Slippage:** 0.02% adverse price movement on each fill by default.
 - **Funding:** a fixed 0.01% rate per 8-hour UTC funding event by default. Positive rates charge longs and credit shorts; negative rates reverse that direction.
 
-Funding is applied at 00:00, 08:00, and 16:00 UTC when a position is open. This is a deterministic stress-test assumption, **not historical funding data**. Real funding varies by symbol and interval; use actual historical rates before drawing conclusions. The model does not yet simulate order-book depth, exchange-specific liquidation, mark-price divergence, or every gap/partial-fill behavior. Paper results are not evidence of profitability.
+Funding is applied at 00:00, 08:00, and 16:00 UTC when a position is open. This is a deterministic stress-test assumption, **not historical funding data**. The `--okx` command fetches public OKX perpetual candles and historical realized funding rates (available history is limited by OKX). The backtest fails explicitly if a position reaches a funding boundary without a supplied historical rate. OKX rates are not Binance rates, so keep candle and funding sources aligned. The model does not yet simulate order-book depth, exchange-specific liquidation, mark-price divergence, or every gap/partial-fill behavior. Paper results are not evidence of profitability.
 
