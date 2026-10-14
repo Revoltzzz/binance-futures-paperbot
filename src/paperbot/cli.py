@@ -29,8 +29,13 @@ def main() -> None:
     parser.add_argument("--cache-dir", default=".cache/binance", help="directory for downloaded candle cache")
     parser.add_argument("--strategy", choices=("ema", "break-retest"), default="ema",
                         help="strategy candidate to evaluate; EMA remains the default baseline")
-    parser.add_argument("--compare-strategies", action="store_true",
-                        help="compare EMA and break-retest on the final 30% holdout; no parameter tuning")
+    evaluation_mode = parser.add_mutually_exclusive_group()
+    evaluation_mode.add_argument("--compare-strategies", action="store_true",
+                                 help="compare EMA and break-retest on the final 30% holdout; no parameter tuning")
+    evaluation_mode.add_argument("--walk-forward", action="store_true",
+                                 help="evaluate both fixed strategies across sequential unseen windows")
+    parser.add_argument("--walk-forward-folds", type=int, default=3,
+                        help="number of sequential holdout folds for --walk-forward (2-10)")
     parser.add_argument("--balance", type=float, default=1000.0, help="starting paper balance")
     parser.add_argument("--candles", type=int, default=300, help="number of synthetic candles for demo")
     args = parser.parse_args()
@@ -61,7 +66,34 @@ def main() -> None:
             candles = demo_candles(args.candles)
             source_label = "deterministic synthetic demo candles (not real market data)"
         comparison_results = None
-        if args.compare_strategies:
+        walk_forward_results = None
+        if args.walk_forward:
+            if not 2 <= args.walk_forward_folds <= 10:
+                raise ValueError("--walk-forward-folds must be between 2 and 10")
+            first_test_index = len(candles) // 2
+            remaining = len(candles) - first_test_index
+            fold_size = remaining // args.walk_forward_folds
+            if first_test_index < 50 or fold_size < 10:
+                raise ValueError("walk-forward needs at least 50 warmup candles and 10 candles per test fold")
+            candidates = (
+                ("ema", EmaCrossStrategy()),
+                ("break-retest", BreakRetestStrategy()),
+            )
+            walk_forward_results = []
+            for fold_index in range(args.walk_forward_folds):
+                start_index = first_test_index + fold_index * fold_size
+                end_index = (len(candles) if fold_index == args.walk_forward_folds - 1
+                             else start_index + fold_size)
+                warmup_candles = candles[:start_index]
+                test_candles = candles[start_index:end_index]
+                for name, candidate in candidates:
+                    fold_result = run_backtest(
+                        test_candles, args.balance, strategy=candidate,
+                        funding_rates=funding_rates, warmup_candles=warmup_candles
+                    )
+                    walk_forward_results.append((fold_index + 1, name, fold_result))
+            result = None
+        elif args.compare_strategies:
             split_index = int(len(candles) * 0.7)
             if split_index < 20 or len(candles) - split_index < 2:
                 raise ValueError("strategy comparison needs at least 20 warmup candles and 2 holdout candles")
@@ -89,6 +121,20 @@ def main() -> None:
     if args.okx:
         print("Funding: historical OKX rates; exchange-specific, not Binance funding rates")
     print(f"Candles: {len(candles)}")
+    if walk_forward_results is not None:
+        print(f"Walk-forward: {args.walk_forward_folds} sequential test folds; earlier candles are warm-up only")
+        for fold_number, name, candidate_result in walk_forward_results:
+            pf = "n/a" if candidate_result.profit_factor is None else f"{candidate_result.profit_factor:.3f}"
+            win_rate = candidate_result.wins / candidate_result.trades * 100 if candidate_result.trades else 0
+            print(
+                f"Fold {fold_number} | {name:14} return={candidate_result.total_return_pct:8.2f}% "
+                f"maxDD={candidate_result.max_drawdown_pct:7.2f}% "
+                f"trades={candidate_result.trades:4d} winRate={win_rate:6.2f}% "
+                f"profitFactor={pf:>7} expectancy={candidate_result.expectancy_per_trade:9.4f}"
+            )
+        print("Parameters stay fixed; this is sequential out-of-sample testing, not parameter optimization.")
+        print("Each fold resets paper balance; compare consistency across folds, not summed returns.")
+        return
     if comparison_results is not None:
         print(f"Holdout: final {len(candles) - int(len(candles) * 0.7)} candles; prior candles used only for indicator warm-up")
         print("Strategy comparison (same holdout, same risk/cost assumptions):")
