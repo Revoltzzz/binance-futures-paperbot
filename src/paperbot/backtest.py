@@ -43,6 +43,29 @@ class BacktestResult:
     trade_history: tuple[TradeJournalEntry, ...] = ()
     risk_events: tuple[RiskJournalEntry, ...] = ()
 
+    @property
+    def gross_profit(self) -> float:
+        """Sum of positive net trade P&L after modeled costs."""
+        return sum(max(0.0, trade.net_pnl) for trade in self.trade_history)
+
+    @property
+    def gross_loss(self) -> float:
+        """Absolute sum of negative net trade P&L after modeled costs."""
+        return sum(abs(min(0.0, trade.net_pnl)) for trade in self.trade_history)
+
+    @property
+    def profit_factor(self) -> float | None:
+        """Positive P&L divided by absolute negative P&L; None if no losses occurred."""
+        loss = self.gross_loss
+        return self.gross_profit / loss if loss > 0 else None
+
+    @property
+    def expectancy_per_trade(self) -> float:
+        """Mean net P&L per closed trade, or zero when there are no trades."""
+        if not self.trade_history:
+            return 0.0
+        return sum(trade.net_pnl for trade in self.trade_history) / len(self.trade_history)
+
 
 def _utc_session(timestamp: int):
     """Accept Unix timestamps in seconds or milliseconds and return UTC date."""
