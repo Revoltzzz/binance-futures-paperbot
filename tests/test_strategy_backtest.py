@@ -265,3 +265,30 @@ def test_profit_factor_is_none_when_there_are_no_losing_trades():
     result = run_backtest(candles, strategy=FirstCandleLong())
     assert result.profit_factor is None
 
+
+def test_warmup_candles_provide_context_without_generating_trades_before_holdout():
+    class SignalAfterThreeCandles:
+        def signal(self, history):
+            return Side.LONG if len(history) == 3 else None
+
+    start = 1_800_000_000_000
+    warmup = [
+        Candle(start, 100, 100.5, 99.5, 100),
+        Candle(start + 300_000, 100, 100.5, 99.5, 100),
+    ]
+    holdout = [
+        Candle(start + 600_000, 100, 100.5, 99.5, 100),
+        Candle(start + 900_000, 102, 102.5, 101.5, 102),
+    ]
+    result = run_backtest(
+        holdout, strategy=SignalAfterThreeCandles(), warmup_candles=warmup
+    )
+    assert result.trades == 1
+    assert result.trade_history[0].entry_time_utc == "2027-01-15T08:15:00+00:00"
+
+
+def test_warmup_and_holdout_must_not_overlap():
+    candle = Candle(1_800_000_000_000, 100, 100.5, 99.5, 100)
+    with pytest.raises(ValueError, match="warmup and test candles"):
+        run_backtest([candle], warmup_candles=[candle])
+
