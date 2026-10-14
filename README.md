@@ -98,3 +98,25 @@ The paper broker applies configurable execution assumptions from `RiskConfig`:
 
 Funding is applied at 00:00, 08:00, and 16:00 UTC when a position is open. This is a deterministic stress-test assumption, **not historical funding data**. The `--okx` command fetches public OKX perpetual candles and historical realized funding rates (available history is limited by OKX). The backtest fails explicitly if a position reaches a funding boundary without a supplied historical rate. OKX rates are not Binance rates, so keep candle and funding sources aligned. The model does not yet simulate order-book depth, exchange-specific liquidation, mark-price divergence, or every gap/partial-fill behavior. Paper results are not evidence of profitability.
 
+## Experimental price-action strategy (not yet proven profitable)
+
+The course `The Trading Industry Will Hate Me for This FREE 10+ Hour Course` by fxalexg discusses market structure, higher-timeframe context, areas of interest, break-and-retest entries, candle confirmation, confluence, risk planning, and patience. These are educational concepts, not evidence that a particular rule set has an edge.
+
+The repository now includes a separate, rule-based `BreakRetestStrategy` candidate. It:
+- waits for a candle close beyond a prior rolling high/low;
+- looks for a later retest of that level within a limited number of candles;
+- requires a confirming candle close and a trend filter using an EMA;
+- emits signals only from the candle history supplied to it, with execution still simulated by the paper broker.
+
+It is a deliberately simplified approximation. It does not yet implement full multi-timeframe structure, subjective supply/demand zones, or news/event filters. The existing EMA crossover remains the default; do not replace it with the new candidate unless out-of-sample results support that choice.
+
+Try the experimental strategy on public data without credentials:
+```bash
+paperbot --okx --symbol BTCUSDT --interval 15m --limit 400 --strategy break-retest
+paperbot --okx --symbol ETHUSDT --interval 1h --limit 400 --strategy break-retest
+```
+
+Compare the same dates, symbol, timeframe, balance, fees, slippage, and funding assumptions against `--strategy ema`. Use separate training and untouched test periods; report net returns, maximum drawdown, profit factor, win rate, trade count, and sensitivity to costs. A strategy that makes no trades or performs poorly should be reported honestly, not tuned until it fits the test period.
+
+**Risk note:** The course summary includes extreme account-flipping examples. This bot intentionally does not adopt 35–100% account risk per trade. Its risk controls and paper-only design take precedence over aggressive examples or marketing claims.
+
