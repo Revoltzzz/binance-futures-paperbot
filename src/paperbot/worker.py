@@ -33,10 +33,14 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
               starting_balance: float, strategy_name: str, history_limit: int = 500) -> str:
     """Run one safe cycle and atomically persist it; data access can be mocked in tests."""
     loaded = store.load(_session_id(symbol, interval))
+    LOG.info("Fetching public futures candles: symbol=%s interval=%s limit=%d",
+             symbol, interval, history_limit)
     candles, market_source = load_public_klines(
         symbol=symbol, interval=interval, limit=history_limit,
         cache_dir=os.getenv("PAPERBOT_CACHE_DIR", ".cache/worker"),
     )
+    LOG.info("Market data received: provider=%s candles=%d latest_candle_ms=%d",
+             market_source, len(candles), candles[-1].timestamp)
     if "kraken spot proxy" in market_source.lower():
         raise MarketDataError("Refusing to use spot-proxy candles for a futures paper session.")
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -118,6 +122,7 @@ def main() -> None:
             LOG.warning("Kill switch enabled; skipping market processing.")
         else:
             try:
+                LOG.info("Beginning paper-trading cycle.")
                 LOG.info("%s", run_cycle(
                     store, symbol=symbol, interval=interval,
                     starting_balance=starting_balance, strategy_name=strategy_name,
@@ -126,6 +131,8 @@ def main() -> None:
                 LOG.error("Concurrent worker conflict; no overwrite occurred: %s", exc)
             except (MarketDataError, OSError, ValueError) as exc:
                 LOG.error("Cycle failed safely; account was not updated: %s", exc)
+            except Exception:
+                LOG.exception("Unexpected cycle failure; investigate before trusting this paper session.")
         time.sleep(poll_seconds)
 
 
