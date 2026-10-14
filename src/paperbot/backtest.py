@@ -59,6 +59,7 @@ def run_backtest(
     candles: list[Candle],
     starting_balance: float = 1000.0,
     strategy: EmaCrossStrategy | None = None,
+    funding_rates: dict[int, float] | None = None,
 ) -> BacktestResult:
     """Backtest close-generated signals at the next candle open.
 
@@ -112,7 +113,15 @@ def run_backtest(
         # This deterministic approximation uses the configured fixed rate, not historical rates.
         seconds = candle.timestamp / 1000 if candle.timestamp > 10_000_000_000 else candle.timestamp
         if seconds % (8 * 60 * 60) == 0 and broker.position is not None:
-            broker.apply_funding(candle.open)
+            if funding_rates is None:
+                broker.apply_funding(candle.open)
+            else:
+                funding_timestamp_ms = candle.timestamp if candle.timestamp > 10_000_000_000 else candle.timestamp * 1000
+                if funding_timestamp_ms not in funding_rates:
+                    raise ValueError(
+                        f"Missing historical funding rate at timestamp {funding_timestamp_ms} ms"
+                    )
+                broker.apply_funding(candle.open, funding_rates[funding_timestamp_ms])
 
         candle_session = _utc_session(candle.timestamp)
         if candle_session != session:
