@@ -140,6 +140,53 @@ else:
         stats[1].metric("Wins / losses", f"{result.wins} / {result.losses}")
         stats[2].metric("EMA settings", f"{fast_period} / {slow_period}")
         stats[3].metric("Candles", str(len(candles)))
+        st.subheader("Paper-trading journal")
+        st.caption("This journal covers the current backtest run only. Download it before changing settings or refreshing; this dashboard does not yet provide durable cross-session storage.")
+        if result.trade_history:
+            journal = pd.DataFrame([{
+                "Entry time (UTC)": item.entry_time_utc,
+                "Exit time (UTC)": item.exit_time_utc,
+                "Side": item.side.upper(),
+                "Entry price": item.entry_price,
+                "Exit price": item.exit_price,
+                "Quantity": item.quantity,
+                "Gross P&L (USDT)": item.gross_pnl,
+                "Fees (USDT)": item.fees,
+                "Net P&L (USDT)": item.net_pnl,
+                "Exit reason": item.exit_reason,
+                "Balance after (USDT)": item.balance_after,
+            } for item in result.trade_history])
+            st.dataframe(journal, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Download trade journal (CSV)",
+                data=journal.to_csv(index=False).encode("utf-8"),
+                file_name=f"paperbot_{symbol}_{interval}_trade_journal.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            st.info("No closed trades in this backtest run, so the trade journal is empty.")
+
+        if result.risk_events:
+            st.subheader("Risk-limit events")
+            risk_journal = pd.DataFrame([{
+                "Time (UTC)": event.time_utc,
+                "Event": event.event,
+                "Marked equity (USDT)": event.marked_equity,
+                "Balance after (USDT)": event.balance_after,
+                "Details": event.message,
+            } for event in result.risk_events])
+            st.dataframe(risk_journal, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Download risk events (CSV)",
+                data=risk_journal.to_csv(index=False).encode("utf-8"),
+                file_name=f"paperbot_{symbol}_{interval}_risk_events.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            st.caption("No daily-loss circuit-breaker events were recorded in this run.")
+
         st.caption(
             "The current strategy is a basic EMA-crossover baseline. Results exclude funding, "
             "liquidations, exchange precision rules and realistic market impact; treat them as exploratory only."
