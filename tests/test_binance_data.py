@@ -16,6 +16,16 @@ def test_parser_sorts_and_discards_incomplete_candle():
     assert [c.timestamp for c in candles] == [0, 300000]
 
 
+def test_parser_rejects_inexact_close_timestamp():
+    with pytest.raises(MarketDataError, match="close timestamp does not match interval"):
+        parse_klines([row(0, 299998)], "5m", now_ms=400000)
+
+
+def test_parser_rejects_non_finite_prices():
+    with pytest.raises(MarketDataError, match="Invalid kline"):
+        parse_klines([row(0, 299999, close="nan")], "5m", now_ms=400000)
+
+
 def test_parser_rejects_duplicate_timestamps():
     with pytest.raises(MarketDataError, match="Duplicate"):
         parse_klines([row(0, 299999), row(0, 299999)], "5m", now_ms=900000)
