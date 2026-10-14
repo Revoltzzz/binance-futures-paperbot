@@ -283,7 +283,7 @@ def test_okx_historical_funding_rates_are_parsed_and_sorted():
         return {
             "code": "0", "msg": "",
             "data": [
-                {"fundingTime": "1700000000000", "fundingRate": "0.0002"},
+                {"fundingTime": "1700000000000", "fundingRate": "0.0002", "realizedRate": "0.00015"},
                 {"fundingTime": "1699971200000", "fundingRate": "-0.0001"},
             ],
         }
@@ -291,7 +291,7 @@ def test_okx_historical_funding_rates_are_parsed_and_sorted():
     rates = load_okx_funding_rates("BTCUSDT", 2, fetcher=fetcher, sleep=lambda _: None)
     assert list(rates) == [1699971200000, 1700000000000]
     assert rates[1699971200000] == pytest.approx(-0.0001)
-    assert rates[1700000000000] == pytest.approx(0.0002)
+    assert rates[1700000000000] == pytest.approx(0.00015)
 
 
 def test_okx_historical_funding_rates_reject_invalid_limit_and_symbol():
