@@ -231,3 +231,37 @@ def test_break_retest_strategy_validates_parameters():
     with pytest.raises(ValueError, match="tolerance_pct"):
         BreakRetestStrategy(tolerance_pct=0.1)
 
+
+def test_backtest_reports_profit_factor_and_net_expectancy():
+    class AlternatingSignals:
+        def signal(self, history):
+            return Side.LONG if len(history) % 2 else Side.SHORT
+
+    day = 1_800_000_000_000
+    candles = [
+        Candle(day + i * 300_000, 100, 102, 98, 100)
+        for i in range(8)
+    ]
+    result = run_backtest(candles, strategy=AlternatingSignals())
+    net = [trade.net_pnl for trade in result.trade_history]
+    expected_profit = sum(value for value in net if value > 0)
+    expected_loss = -sum(value for value in net if value < 0)
+    assert result.gross_profit == pytest.approx(expected_profit)
+    assert result.gross_loss == pytest.approx(expected_loss)
+    assert result.profit_factor == pytest.approx(expected_profit / expected_loss)
+    assert result.expectancy_per_trade == pytest.approx(sum(net) / len(net))
+
+
+def test_profit_factor_is_none_when_there_are_no_losing_trades():
+    class FirstCandleLong:
+        def signal(self, history):
+            return Side.LONG if len(history) == 1 else None
+
+    candles = [
+        Candle(1_800_000_000_000, 100, 100.5, 99.5, 100),
+        Candle(1_800_000_300_000, 102, 102.5, 101.5, 102),
+        Candle(1_800_000_600_000, 103, 103.5, 102.5, 103),
+    ]
+    result = run_backtest(candles, strategy=FirstCandleLong())
+    assert result.profit_factor is None
+
