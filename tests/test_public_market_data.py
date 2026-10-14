@@ -1,3 +1,5 @@
+import pytest
+
 from paperbot.binance_data import MarketDataError
 from paperbot.models import Candle
 from paperbot.public_market_data import (
@@ -232,4 +234,39 @@ def test_okx_rejects_duplicate_timestamps_in_provider_response():
             "BTCUSDT", "5m", 2, now_ms=700000,
             fetcher=lambda _: duplicate_payload, sleep=lambda _: None,
         )
+
+@pytest.mark.parametrize(
+    ("symbol", "interval", "expected_instrument", "expected_bar", "duration_ms"),
+    [
+        ("BTCUSDT", "5m", "BTC-USDT-SWAP", "5m", 300000),
+        ("BTCUSDT", "15m", "BTC-USDT-SWAP", "15m", 900000),
+        ("BTCUSDT", "1h", "BTC-USDT-SWAP", "1H", 3600000),
+        ("ETHUSDT", "5m", "ETH-USDT-SWAP", "5m", 300000),
+        ("ETHUSDT", "15m", "ETH-USDT-SWAP", "15m", 900000),
+        ("ETHUSDT", "1h", "ETH-USDT-SWAP", "1H", 3600000),
+    ],
+)
+def test_okx_supports_btc_and_eth_on_required_timeframes(
+    symbol, interval, expected_instrument, expected_bar, duration_ms
+):
+    from urllib.parse import parse_qs, urlparse
+
+    def fetcher(url):
+        params = parse_qs(urlparse(url).query)
+        assert params["instId"] == [expected_instrument]
+        assert params["bar"] == [expected_bar]
+        return {
+            "code": "0",
+            "msg": "",
+            "data": [
+                [str(duration_ms), "101", "103", "100", "102", "8", "8", "800", "1"],
+                ["0", "100", "102", "99", "101", "5", "5", "500", "1"],
+            ],
+        }
+
+    candles = load_okx_swap_klines(
+        symbol, interval, 2, now_ms=10_000_000,
+        fetcher=fetcher, sleep=lambda _: None,
+    )
+    assert [c.timestamp for c in candles] == [0, duration_ms]
 
