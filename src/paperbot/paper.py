@@ -71,12 +71,16 @@ class PaperBroker:
         # Conservative if both levels cross in one candle: assume stop first.
         if pos.side == Side.LONG:
             if candle.low <= pos.stop_price:
-                return self.close_position(pos.stop_price, "stop_loss")
+                # A stop-market order can fill worse than its trigger after a gap.
+                fill = min(candle.open, pos.stop_price)
+                return self.close_position(fill, "stop_loss")
             if candle.high >= pos.take_profit_price:
+                # Model a limit target conservatively at the target, not an improved gap fill.
                 return self.close_position(pos.take_profit_price, "take_profit")
         else:
             if candle.high >= pos.stop_price:
-                return self.close_position(pos.stop_price, "stop_loss")
+                fill = max(candle.open, pos.stop_price)
+                return self.close_position(fill, "stop_loss")
             if candle.low <= pos.take_profit_price:
                 return self.close_position(pos.take_profit_price, "take_profit")
         return None
