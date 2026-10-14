@@ -17,7 +17,7 @@ A safety-first Python starter for **local paper trading and backtesting**. It ne
 
 ## Browser dashboard (no local setup)
 
-The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It displays public Binance USDⓈ-M Futures candles for BTCUSDT or ETHUSDT, a simple EMA paper backtest, and recent headlines. If Binance is blocked or unavailable, it tries Bybit public USDT linear-perpetual candles and visibly labels the fallback provider. Different exchanges can have different candles and prices, so note the provider before interpreting a backtest. It has automatic browser refresh and a manual refresh control. It does **not** place real orders or need API keys.
+The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It displays public market candles for BTCUSDT or ETHUSDT, a simple EMA paper backtest, and recent headlines. Provider order: Binance USDⓈ-M Futures, Bybit USDT linear perpetual, then Kraken spot proxy if both futures APIs are blocked. The source is visibly labeled. **Kraken is spot data, not futures data**, so it is only a rough market proxy and cannot validate futures-specific behavior. Different providers have different candles and prices, so note the provider before interpreting results. It has automatic browser refresh and a manual refresh control. It does **not** place real orders or need API keys.
 
 **Open the hosted-app setup page:** [Deploy PaperBot to Streamlit Community Cloud](https://share.streamlit.io/deploy?repository=Revoltzzz%2Fbinance-futures-paperbot&branch=main&mainModule=app.py)
 
