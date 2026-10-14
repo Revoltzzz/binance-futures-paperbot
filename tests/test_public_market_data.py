@@ -140,10 +140,15 @@ def test_all_provider_failures_are_reported(tmp_path):
     with pytest.raises(MarketDataError, match="All public market-data providers failed") as exc:
         load_public_klines(cache_dir=tmp_path, binance_loader=fail,
                            bybit_loader=fail, okx_loader=fail, kraken_loader=fail)
-    assert "Binance USDⓈ-M Futures: HTTP Error 451" in str(exc.value)
-    assert "Bybit USDT linear perpetual (fallback): HTTP Error 451" in str(exc.value)
-    assert "OKX USDT perpetual swap (fallback): HTTP Error 451" in str(exc.value)
-    assert "Kraken spot proxy (NOT futures data): HTTP Error 451" in str(exc.value)
+    message = str(exc.value)
+    for provider in (
+        "Binance USDⓈ-M Futures",
+        "Bybit USDT linear perpetual (fallback)",
+        "OKX USDT perpetual swap (fallback)",
+        "Kraken spot proxy (NOT futures data)",
+    ):
+        assert provider in message
+    assert message.count("HTTP Error 451") == 4
 
 
 def test_provider_fallback_diagnostics_expose_binance_and_bybit_errors(tmp_path):
