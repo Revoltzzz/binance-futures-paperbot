@@ -3,7 +3,6 @@ from urllib.error import URLError
 
 import pytest
 
-from paperbot.data import Candle
 from paperbot.binance_data import MarketDataError, load_binance_klines, parse_klines
 
 
