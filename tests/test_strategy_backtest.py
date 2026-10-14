@@ -137,3 +137,36 @@ def test_backtest_applies_fixed_funding_at_utc_eight_hour_boundary():
     assert trade.net_pnl == pytest.approx(
         trade.gross_pnl - trade.fees - trade.funding_cost
     )
+
+
+
+def test_backtest_uses_supplied_historical_funding_rate():
+    class FirstCandleLong:
+        def signal(self, history):
+            return Side.LONG if len(history) == 1 else None
+
+    boundary_ms = 1_800_000_000_000
+    candles = [
+        Candle(boundary_ms - 600_000, 100, 100.5, 99.5, 100),
+        Candle(boundary_ms - 300_000, 100, 100.5, 99.5, 100),
+        Candle(boundary_ms, 100, 100.5, 99.5, 100),
+    ]
+    result = run_backtest(candles, strategy=FirstCandleLong(),
+                          funding_rates={boundary_ms: 0.001})
+    assert result.trades == 1
+    assert result.trade_history[0].funding_cost > 0
+
+
+def test_backtest_fails_explicitly_when_historical_funding_rate_is_missing():
+    class FirstCandleLong:
+        def signal(self, history):
+            return Side.LONG if len(history) == 1 else None
+
+    boundary_ms = 1_800_000_000_000
+    candles = [
+        Candle(boundary_ms - 600_000, 100, 100.5, 99.5, 100),
+        Candle(boundary_ms - 300_000, 100, 100.5, 99.5, 100),
+        Candle(boundary_ms, 100, 100.5, 99.5, 100),
+    ]
+    with pytest.raises(ValueError, match="Missing historical funding rate"):
+        run_backtest(candles, strategy=FirstCandleLong(), funding_rates={})
