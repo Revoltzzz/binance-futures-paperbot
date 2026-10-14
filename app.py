@@ -88,7 +88,7 @@ with st.spinner(f"Loading public {symbol} {interval} candles…"):
 
 if market_error:
     st.error(f"Market data unavailable: {market_error}")
-    st.info("Both public providers will be retried on the next refresh. No stale candle cache is silently used.")
+    st.info("All configured public providers will be retried on the next refresh. No stale candle cache is silently used.")
 else:
     latest = candles[-1]
     now = datetime.now(timezone.utc)
@@ -108,9 +108,10 @@ else:
             f"source: {market_source} · latest candle open {latest_dt:%Y-%m-%d %H:%M:%S} UTC · "
             f"approx. candle age {delay_seconds // 60} min"
         )
-        if "fallback" in market_source:
-            st.warning("Binance was unavailable, so this backtest uses Bybit linear-perpetual candles. "
-                       "Do not compare results across providers as if their candles were identical.")
+        if "Kraken spot proxy" in market_source:
+            st.warning("Binance and Bybit futures data were unavailable. This is a SPOT-market proxy, not futures data; it excludes futures basis, funding, and contract-specific behavior. Do not use this run to validate a futures strategy.")
+        elif "fallback" in market_source:
+            st.warning("Binance was unavailable, so this backtest uses Bybit linear-perpetual candles. Do not compare results across providers as if their candles were identical.")
         prices = pd.DataFrame({
             "Time (UTC)": [datetime.fromtimestamp(c.timestamp / 1000, tz=timezone.utc) for c in candles],
             "Close": [c.close for c in candles],
