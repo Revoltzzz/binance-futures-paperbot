@@ -270,3 +270,48 @@ def test_okx_supports_btc_and_eth_on_required_timeframes(
     )
     assert [c.timestamp for c in candles] == [0, duration_ms]
 
+
+
+
+def test_okx_historical_funding_rates_are_parsed_and_sorted():
+    from urllib.parse import parse_qs, urlparse
+    from paperbot.public_market_data import load_okx_funding_rates
+
+    def fetcher(url):
+        params = parse_qs(urlparse(url).query)
+        assert params["instId"] == ["BTC-USDT-SWAP"]
+        return {
+            "code": "0", "msg": "",
+            "data": [
+                {"fundingTime": "1700000000000", "fundingRate": "0.0002"},
+                {"fundingTime": "1699971200000", "fundingRate": "-0.0001"},
+            ],
+        }
+
+    rates = load_okx_funding_rates("BTCUSDT", 2, fetcher=fetcher, sleep=lambda _: None)
+    assert list(rates) == [1699971200000, 1700000000000]
+    assert rates[1699971200000] == pytest.approx(-0.0001)
+    assert rates[1700000000000] == pytest.approx(0.0002)
+
+
+def test_okx_historical_funding_rates_reject_invalid_limit_and_symbol():
+    from paperbot.public_market_data import load_okx_funding_rates
+
+    with pytest.raises(ValueError, match="limit"):
+        load_okx_funding_rates(limit=401)
+    with pytest.raises(ValueError, match="does not support"):
+        load_okx_funding_rates("DOGEUSDT")
+
+
+def test_okx_historical_funding_rates_reject_duplicate_timestamps():
+    from paperbot.public_market_data import load_okx_funding_rates
+
+    payload = {
+        "code": "0", "msg": "",
+        "data": [
+            {"fundingTime": "1700000000000", "fundingRate": "0.0002"},
+            {"fundingTime": "1700000000000", "fundingRate": "0.0003"},
+        ],
+    }
+    with pytest.raises(MarketDataError, match="Duplicate OKX funding timestamp"):
+        load_okx_funding_rates(fetcher=lambda _: payload, sleep=lambda _: None)
