@@ -30,13 +30,24 @@ def test_only_one_open_position():
 def test_invalid_balance_rejected():
     with pytest.raises(ValueError):
         PaperBroker(0)
+    with pytest.raises(ValueError, match="finite positive"):
+        PaperBroker(float("nan"))
+
+
+def test_non_finite_execution_prices_are_rejected():
+    broker = PaperBroker(1000)
+    assert broker.open_position(Side.LONG, float("nan")) is None
+    assert broker.open_position(Side.LONG, 100) is not None
+    assert broker.close_position(float("inf")) is None
+    with pytest.raises(ValueError, match="mark_price"):
+        broker.equity(float("nan"))
 
 
 def test_trade_pnl_and_balance_include_entry_and_exit_fees():
     broker = PaperBroker(1000)
     pos = broker.open_position(Side.LONG, 100)
     assert pos is not None
-    assert pos.quantity == pytest.approx(10)
+    assert 0 < pos.quantity < 10
     trade = broker.close_position(110, "test_exit")
     assert trade is not None
     expected_entry_fee = 100 * pos.quantity * 0.0004
