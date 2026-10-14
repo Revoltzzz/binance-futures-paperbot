@@ -41,6 +41,7 @@ class Position:
     stop_price: float
     take_profit_price: float
     entry_fee: float = 0.0
+    funding_cost: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -52,3 +53,4 @@ class Trade:
     pnl: float
     fees: float
     reason: str
+    funding_cost: float = 0.0
