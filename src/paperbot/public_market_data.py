@@ -22,6 +22,68 @@ BYBIT_INTERVAL = {
 OKX_URL = "https://www.okx.com/api/v5/market/candles"
 OKX_INTERVAL = {"5m": "5m", "15m": "15m", "1h": "1H"}
 OKX_SYMBOL = {"BTCUSDT": "BTC-USDT-SWAP", "ETHUSDT": "ETH-USDT-SWAP"}
+
+OKX_FUNDING_URL = "https://www.okx.com/api/v5/public/funding-rate-history"
+
+
+def load_okx_funding_rates(symbol: str = "BTCUSDT", limit: int = 100, *,
+    fetcher: JsonFetcher | None = None,
+    retries: int = 2,
+    sleep: Callable[[float], None] | None = None) -> dict[int, float]:
+    """Fetch public OKX perpetual-swap funding rates keyed by funding timestamp in ms.
+
+    OKX exposes only a rolling recent history. Rates are exchange-specific and
+    must not be treated as Binance historical rates.
+    """
+    import time
+    symbol = symbol.upper()
+    if symbol not in OKX_SYMBOL:
+        raise ValueError(f"OKX funding fallback does not support {symbol}")
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 400:
+        raise ValueError("limit must be an integer between 1 and 400")
+    request = fetcher or _fetch_json
+    pause = sleep or time.sleep
+    rates: dict[int, float] = {}
+    cursor: int | None = None
+    while len(rates) < limit:
+        page_limit = min(100, limit - len(rates))
+        params = {"instId": OKX_SYMBOL[symbol], "limit": page_limit}
+        if cursor is not None:
+            params["after"] = str(cursor)
+        url = OKX_FUNDING_URL + "?" + urlencode(params)
+        payload = _request_with_retries(url, request, retries, pause)
+        if not isinstance(payload, dict) or payload.get("code") != "0":
+            detail = payload.get("msg", "unexpected response") if isinstance(payload, dict) else "unexpected response"
+            raise MarketDataError(f"OKX funding-rate response error: {detail}")
+        rows = payload.get("data")
+        if not isinstance(rows, list) or not rows:
+            if rates:
+                break
+            raise MarketDataError("Unexpected OKX funding response: missing data")
+        page_times: list[int] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                raise MarketDataError("Malformed OKX funding-rate row")
+            try:
+                timestamp = int(row["fundingTime"])
+                rate = float(row["fundingRate"])
+            except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                raise MarketDataError("Invalid OKX funding-rate row") from exc
+            import math
+            if timestamp < 0 or not math.isfinite(rate) or not -0.1 < rate < 0.1:
+                raise MarketDataError("Out-of-range OKX funding-rate row")
+            if timestamp in rates:
+                raise MarketDataError(f"Duplicate OKX funding timestamp: {timestamp}")
+            rates[timestamp] = rate
+            page_times.append(timestamp)
+        oldest = min(page_times)
+        if cursor is not None and oldest >= cursor:
+            raise MarketDataError("OKX funding pagination made no progress")
+        cursor = oldest
+        if len(rows) < page_limit:
+            break
+    return dict(sorted(rates.items()))
+
 KRAKEN_URL = "https://api.kraken.com/0/public/OHLC"
 KRAKEN_INTERVAL = {"5m": 5, "15m": 15, "1h": 60}
 KRAKEN_SYMBOL = {"BTCUSDT": "XBTUSD", "ETHUSDT": "ETHUSD"}
