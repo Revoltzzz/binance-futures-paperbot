@@ -3,6 +3,7 @@ import argparse
 from .backtest import run_backtest
 from .binance_data import MarketDataError, load_binance_klines
 from .data import demo_candles, load_csv
+from .news import NewsError, fetch_latest_news, print_news, watch_news
 
 
 def main() -> None:
@@ -11,6 +12,13 @@ def main() -> None:
     source.add_argument("--csv", help="OHLC CSV path")
     source.add_argument("--binance", action="store_true",
                         help="download public Binance USDⓈ-M Futures candles (no API key; network required)")
+    news_mode = parser.add_mutually_exclusive_group()
+    news_mode.add_argument("--news-only", action="store_true", help="fetch and print latest crypto-market headlines, then exit")
+    news_mode.add_argument("--watch-news", action="store_true", help="repeatedly refresh news until Ctrl+C")
+    parser.add_argument("--show-news", action="store_true", help="print latest headlines before the backtest")
+    parser.add_argument("--news-limit", type=int, default=15, help="headlines to display (1-100)")
+    parser.add_argument("--refresh-seconds", type=int, default=300, help="news watch refresh interval, minimum 30 seconds")
+    parser.add_argument("--news-cache", default=".cache/news/latest.json", help="local news snapshot path")
     parser.add_argument("--symbol", default="BTCUSDT", help="symbol for --binance (default: BTCUSDT)")
     parser.add_argument("--interval", default="5m", help="interval for --binance (default: 5m)")
     parser.add_argument("--limit", type=int, default=500, help="completed candle request limit (1-1500)")
@@ -21,6 +29,15 @@ def main() -> None:
     if args.balance <= 0:
         parser.error("--balance must be positive")
     try:
+        if args.news_only:
+            print_news(fetch_latest_news(limit=args.news_limit, cache_path=args.news_cache))
+            return
+        if args.watch_news:
+            watch_news(args.refresh_seconds, args.news_limit, args.news_cache)
+            return
+        if args.show_news:
+            print("LATEST CRYPTO-MARKET HEADLINES (context only; not trade instructions)")
+            print_news(fetch_latest_news(limit=args.news_limit, cache_path=args.news_cache))
         if args.csv:
             candles = load_csv(args.csv)
             source_label = f"CSV: {args.csv}"
@@ -31,7 +48,7 @@ def main() -> None:
             candles = demo_candles(args.candles)
             source_label = "deterministic synthetic demo candles (not real market data)"
         result = run_backtest(candles, args.balance)
-    except (ValueError, OSError, MarketDataError) as exc:
+    except (ValueError, OSError, MarketDataError, NewsError) as exc:
         parser.error(str(exc))
     print("PAPER BACKTEST ONLY — no real orders are placed")
     print(f"Data source: {source_label}")
