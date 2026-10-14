@@ -43,10 +43,13 @@ st.markdown(
 
 
 @st.cache_data(ttl=45, show_spinner=False)
-def get_candles(symbol: str, interval: str, limit: int) -> tuple[list[Candle], str]:
-    return load_public_klines(
-        symbol=symbol, interval=interval, limit=limit, cache_dir=ROOT / "candles"
+def get_candles(symbol: str, interval: str, limit: int) -> tuple[list[Candle], str, list[str]]:
+    diagnostics: list[str] = []
+    candles, source = load_public_klines(
+        symbol=symbol, interval=interval, limit=limit, cache_dir=ROOT / "candles",
+        diagnostics=diagnostics,
     )
+    return candles, source, diagnostics
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -80,9 +83,10 @@ if slow_period <= fast_period:
 market_error = None
 candles: list[Candle] = []
 market_source = ""
+provider_diagnostics: list[str] = []
 with st.spinner(f"Loading public {symbol} {interval} candles…"):
     try:
-        candles, market_source = get_candles(symbol, interval, limit)
+        candles, market_source, provider_diagnostics = get_candles(symbol, interval, limit)
     except (MarketDataError, OSError, ValueError) as exc:
         market_error = str(exc)
 
@@ -98,6 +102,11 @@ else:
         # Keep the provider impossible to miss: spot proxy results must not be
         # mistaken for Futures results when users inspect the performance cards.
         st.info(f"**Market data provider:** {market_source}")
+        if provider_diagnostics:
+            with st.expander("Why earlier providers failed"):
+                st.caption("These are the actual public-data errors seen during this refresh. No account credentials are used.")
+                for diagnostic in provider_diagnostics:
+                    st.code(diagnostic, language=None)
         interval_seconds = {"5m": 300, "15m": 900, "1h": 3600}[interval]
         if delay_seconds > interval_seconds * 3:
             st.warning(
