@@ -9,7 +9,7 @@ A safety-first Python starter for **local paper trading and backtesting**. It ne
 - Local simulated long/short broker with stop-loss and take-profit
 - Risk-based position sizing, leverage cap, fee approximation and daily-loss-limit helper
 - Public Binance Futures candle downloader with retries, validation, incomplete-candle filtering and local cache
-- Browser dashboard fallback to Bybit USDT linear-perpetual candles when Binance returns regional/network errors; source is clearly labelled
+- Browser dashboard tries Binance USDⓈ-M Futures, Bybit linear perpetuals, and OKX USDT perpetual swaps before an explicitly labelled Kraken spot proxy; provider failures are shown
 - Multi-source news aggregation (CoinDesk, Cointelegraph, CryptoSlate and Bitcoin Magazine RSS/Atom feeds)
 - Deduplication, publication-time sorting, local news snapshot, one-shot news and recurring refresh mode
 - Offline tests with mocked HTTP/RSS responses; GitHub Actions CI
@@ -17,7 +17,7 @@ A safety-first Python starter for **local paper trading and backtesting**. It ne
 
 ## Browser dashboard (no local setup)
 
-The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It displays public market candles for BTCUSDT or ETHUSDT, a simple EMA paper backtest, and recent headlines. Provider order: Binance USDⓈ-M Futures, Bybit USDT linear perpetual, then Kraken spot proxy if both futures APIs are blocked. The source is visibly labeled. **Kraken is spot data, not futures data**, so it is only a rough market proxy and cannot validate futures-specific behavior. Different providers have different candles and prices, so note the provider before interpreting results. It has automatic browser refresh and a manual refresh control. It does **not** place real orders or need API keys.
+The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It displays public market candles for BTCUSDT or ETHUSDT, a simple EMA paper backtest, and recent headlines. Provider order: Binance USDⓈ-M Futures, Bybit USDT linear perpetual, OKX USDT perpetual swap, then Kraken spot proxy if all derivatives APIs are blocked. Provider failures are shown in the dashboard. The source is visibly labeled. **Kraken is spot data, not futures data**, so it is only a rough market proxy and cannot validate futures-specific behavior. OKX public swap candles need no API key. Different providers have different candles and prices, so note the provider before interpreting results. It has automatic browser refresh and a manual refresh control. It does **not** place real orders or need API keys.
 
 **Open the hosted-app setup page:** [Deploy PaperBot to Streamlit Community Cloud](https://share.streamlit.io/deploy?repository=Revoltzzz%2Fbinance-futures-paperbot&branch=main&mainModule=app.py)
 
