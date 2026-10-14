@@ -83,6 +83,7 @@ def run_backtest(
     starting_balance: float = 1000.0,
     strategy: EmaCrossStrategy | None = None,
     funding_rates: dict[int, float] | None = None,
+    warmup_candles: list[Candle] | None = None,
 ) -> BacktestResult:
     """Backtest close-generated signals at the next candle open.
 
@@ -96,10 +97,17 @@ def run_backtest(
     if any(current.timestamp <= previous.timestamp
            for previous, current in zip(candles, candles[1:])):
         raise ValueError("candles must have strictly increasing timestamps")
+    warmup = list(warmup_candles or [])
+    combined = warmup + candles
+    if any(current.timestamp <= previous.timestamp
+           for previous, current in zip(combined, combined[1:])):
+        raise ValueError("warmup and test candles must be strictly increasing and non-overlapping")
 
     strategy = strategy or EmaCrossStrategy()
     broker = PaperBroker(starting_balance)
-    history: list[Candle] = []
+    # Warm-up candles provide past context only: no simulated fills, risk events,
+    # funding, or P&L are generated before the evaluation window begins.
+    history: list[Candle] = warmup
     pending_signal: Side | None = None
     peak = float(starting_balance)
     max_dd = 0.0
