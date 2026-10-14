@@ -58,11 +58,13 @@ def main() -> None:
         else:
             candles = demo_candles(args.candles)
             source_label = "deterministic synthetic demo candles (not real market data)"
-        strategy = EmaCrossStrategy() if args.strategy == "ema" else BreakRetestStrategy()\n        result = run_backtest(candles, args.balance, strategy=strategy, funding_rates=funding_rates)
+        strategy = EmaCrossStrategy() if args.strategy == "ema" else BreakRetestStrategy()
+        result = run_backtest(candles, args.balance, strategy=strategy, funding_rates=funding_rates)
     except (ValueError, OSError, MarketDataError, NewsError) as exc:
         parser.error(str(exc))
     print("PAPER BACKTEST ONLY — no real orders are placed")
-    print(f"Data source: {source_label}")\n    print(f"Strategy: {args.strategy}")
+    print(f"Data source: {source_label}")
+    print(f"Strategy: {args.strategy}")
     if args.okx:
         print("Funding: historical OKX rates; exchange-specific, not Binance funding rates")
     print(f"Candles: {len(candles)}")
