@@ -95,6 +95,15 @@ else:
     latest_dt = datetime.fromtimestamp(latest.timestamp / 1000, tz=timezone.utc)
     delay_seconds = max(0, int((now - latest_dt).total_seconds()))
     try:
+        # Keep the provider impossible to miss: spot proxy results must not be
+        # mistaken for Futures results when users inspect the performance cards.
+        st.info(f"**Market data provider:** {market_source}")
+        interval_seconds = {"5m": 300, "15m": 900, "1h": 3600}[interval]
+        if delay_seconds > interval_seconds * 3:
+            st.warning(
+                f"Latest candle appears stale ({delay_seconds // 60} minutes old). "
+                "Refresh the data and do not interpret this backtest as current-market evidence."
+            )
         result = run_backtest(candles, float(starting_balance),
                               EmaCrossStrategy(fast_period=fast_period, slow_period=slow_period))
         m1, m2, m3, m4, m5 = st.columns(5)
