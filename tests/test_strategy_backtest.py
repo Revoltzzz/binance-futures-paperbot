@@ -247,8 +247,8 @@ def test_backtest_reports_profit_factor_and_net_expectancy():
     net = [trade.net_pnl for trade in result.trade_history]
     expected_profit = sum(value for value in net if value > 0)
     expected_loss = -sum(value for value in net if value < 0)
-    assert result.gross_profit == pytest.approx(expected_profit)
-    assert result.gross_loss == pytest.approx(expected_loss)
+    assert result.positive_net_pnl == pytest.approx(expected_profit)
+    assert result.negative_net_pnl == pytest.approx(expected_loss)
     assert result.profit_factor == pytest.approx(expected_profit / expected_loss)
     assert result.expectancy_per_trade == pytest.approx(sum(net) / len(net))
 
