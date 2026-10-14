@@ -76,6 +76,44 @@ def test_daily_loss_limit_closes_position_and_blocks_same_day_entries():
     assert result.ending_balance < 970
 
 
+
+def test_backtest_journal_records_trade_timestamps_fees_and_exit_reason():
+    class FirstCandleLong:
+        def signal(self, history):
+            return Side.LONG if len(history) == 1 else None
+
+    candles = [
+        Candle(1_800_000_000_000, 100, 100.5, 99.5, 100),
+        Candle(1_800_000_300_000, 102, 102.5, 101.5, 102),
+        Candle(1_800_000_600_000, 103, 103.5, 102.5, 103),
+    ]
+    result = run_backtest(candles, strategy=FirstCandleLong())
+    assert result.trades == len(result.trade_history) == 1
+    trade = result.trade_history[0]
+    assert trade.entry_time_utc == "2027-01-15T08:05:00+00:00"
+    assert trade.exit_time_utc == "2027-01-15T08:10:00+00:00"
+    assert trade.side == "long"
+    assert trade.exit_reason == "end_of_data"
+    assert trade.fees > 0
+    assert trade.net_pnl == pytest.approx(trade.gross_pnl - trade.fees)
+    assert trade.balance_after == pytest.approx(result.ending_balance)
+
+
+def test_daily_loss_circuit_breaker_is_in_risk_journal():
+    class AlternatingSignals:
+        def signal(self, history):
+            return Side.LONG if len(history) % 2 else Side.SHORT
+
+    day = 1_800_000_000_000
+    candles = [Candle(day + i * 300_000, 100, 102, 98, 100) for i in range(8)]
+    result = run_backtest(candles, strategy=AlternatingSignals())
+    assert len(result.risk_events) == 1
+    event = result.risk_events[0]
+    assert event.event == "daily_loss_limit"
+    assert event.balance_after < 1000
+    assert "blocked" in event.message
+
+
 def test_candle_ohlc_validation():
     with pytest.raises(ValueError):
         Candle(1, 100, 99, 98, 100)
