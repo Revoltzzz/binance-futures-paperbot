@@ -25,6 +25,26 @@ KRAKEN_SYMBOL = {"BTCUSDT": "XBTUSD", "ETHUSDT": "ETHUSD"}
 JsonFetcher = Callable[[str], object]
 
 
+def _validate_provider_candles(candles: object, interval: str, provider: str) -> list[Candle]:
+    """Reject empty, malformed, unordered, or gapped data at provider boundaries."""
+    if interval not in INTERVAL_MS:
+        raise MarketDataError(f"{provider} returned data for unsupported interval: {interval}")
+    if not isinstance(candles, list) or not candles:
+        raise MarketDataError(f"{provider} returned no candles")
+    if not all(isinstance(candle, Candle) for candle in candles):
+        raise MarketDataError(f"{provider} returned malformed candle objects")
+    duration = INTERVAL_MS[interval]
+    for previous, current in zip(candles, candles[1:]):
+        difference = current.timestamp - previous.timestamp
+        if difference != duration:
+            kind = "missing" if difference > duration else "duplicate or out-of-order"
+            raise MarketDataError(
+                f"{provider} returned {kind} candle timestamps: "
+                f"{previous.timestamp}, {current.timestamp}"
+            )
+    return candles
+
+
 def load_bybit_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: int = 500, *,
     now_ms: int | None = None, fetcher: JsonFetcher | None = None,
     retries: int = 2, sleep: Callable[[float], None] | None = None) -> list[Candle]:
@@ -122,7 +142,7 @@ def load_public_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: int
     ]
     for label, cache_provider, get_data in providers:
         try:
-            candles = get_data()
+            candles = _validate_provider_candles(get_data(), interval, label)
             _write_cache(cache_dir, cache_provider, symbol, interval, candles)
             return candles, label
         except (MarketDataError, OSError, ValueError) as exc:
