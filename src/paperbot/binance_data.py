@@ -48,7 +48,7 @@ def _request_with_retries(url: str, fetcher: JsonFetcher, retries: int,
             last_error = exc
             if attempt < retries:
                 sleep(min(0.5 * (2 ** attempt), 4.0))
-    raise MarketDataError(f"Binance market-data request failed after {retries + 1} attempts: {last_error}") from last_error
+    raise MarketDataError(f"Public market-data request failed after {retries + 1} attempts: {last_error}") from last_error
 
 
 def parse_klines(payload: object, interval: str, now_ms: int | None = None) -> list[Candle]:
