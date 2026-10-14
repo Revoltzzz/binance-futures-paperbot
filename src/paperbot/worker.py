@@ -33,12 +33,16 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
               starting_balance: float, strategy_name: str, history_limit: int = 500) -> str:
     """Run one safe cycle and atomically persist it; data access can be mocked in tests."""
     loaded = store.load(_session_id(symbol, interval))
+    diagnostics: list[str] = []
     LOG.info("Fetching public futures candles: symbol=%s interval=%s limit=%d",
              symbol, interval, history_limit)
     candles, market_source = load_public_klines(
         symbol=symbol, interval=interval, limit=history_limit,
         cache_dir=os.getenv("PAPERBOT_CACHE_DIR", ".cache/worker"),
+        diagnostics=diagnostics,
     )
+    for detail in diagnostics:
+        LOG.warning("Market-data provider failed; trying next provider: %s", detail)
     LOG.info("Market data received: provider=%s candles=%d latest_candle_ms=%d",
              market_source, len(candles), candles[-1].timestamp)
     if "kraken spot proxy" in market_source.lower():
