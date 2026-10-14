@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from .binance_data import INTERVAL_MS, MarketDataError
 from .public_market_data import load_public_klines
 from .session import PaperTradingSession
+from .review import summarize_trades
 from .storage import SQLitePaperStore, SessionConflict
 
 LOG = logging.getLogger("paperbot.worker")
@@ -65,10 +66,24 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     if processed == 0:
         return f"No new candles; account revision {new_revision} remains current."
     equity = session.broker.equity(candles[-1].close)
+    review = summarize_trades(session.trades, window=20)
+    if review["sample_size"]:
+        review_text = (
+            "last%d win_rate=%.1f%% expectancy=%.4f USDT/trade net_pnl=%.2f USDT"
+            % (
+                review["sample_size"],
+                review["win_rate_pct"],
+                review["expectancy_per_trade"],
+                review["net_pnl"],
+            )
+        )
+    else:
+        review_text = "no closed trades yet"
     return (
         f"Processed {processed} candle(s); revision={new_revision}; "
         f"last={session.last_timestamp}; balance={session.broker.balance:.2f} USDT; "
-        f"equity={equity:.2f} USDT; closed_trades={len(session.trades)}."
+        f"equity={equity:.2f} USDT; closed_trades={len(session.trades)}; "
+        f"review={review_text}. Strategy parameters are not auto-changed."
     )
 
 
