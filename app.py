@@ -13,9 +13,10 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
 from paperbot.backtest import run_backtest
-from paperbot.binance_data import INTERVAL_MS, MarketDataError, load_binance_klines
+from paperbot.binance_data import MarketDataError
 from paperbot.models import Candle
 from paperbot.news import NewsError, NewsItem, fetch_latest_news
+from paperbot.public_market_data import load_public_klines
 from paperbot.strategy import EmaCrossStrategy
 
 ROOT = Path(".cache/web")
@@ -35,18 +36,16 @@ st.title("📈 PaperBot Market Lab")
 st.caption("Public crypto market data · live news headlines · simulated backtests")
 
 st.markdown(
-    '<div class="risk-note"><b>Paper trading only.</b> No Binance keys are used and '
+    '<div class="risk-note"><b>Paper trading only.</b> No exchange keys are used and '
     'no real orders can be placed. Backtests are historical simulations, not profit forecasts.</div>',
     unsafe_allow_html=True,
 )
 
+
 @st.cache_data(ttl=45, show_spinner=False)
-def get_candles(symbol: str, interval: str, limit: int) -> list[Candle]:
-    return load_binance_klines(
-        symbol=symbol,
-        interval=interval,
-        limit=limit,
-        cache_dir=ROOT / "candles",
+def get_candles(symbol: str, interval: str, limit: int) -> tuple[list[Candle], str]:
+    return load_public_klines(
+        symbol=symbol, interval=interval, limit=limit, cache_dir=ROOT / "candles"
     )
 
 
@@ -80,15 +79,16 @@ if slow_period <= fast_period:
 
 market_error = None
 candles: list[Candle] = []
+market_source = ""
 with st.spinner(f"Loading public {symbol} {interval} candles…"):
     try:
-        candles = get_candles(symbol, interval, limit)
+        candles, market_source = get_candles(symbol, interval, limit)
     except (MarketDataError, OSError, ValueError) as exc:
         market_error = str(exc)
 
 if market_error:
     st.error(f"Market data unavailable: {market_error}")
-    st.info("The dashboard will retry on the next refresh. No stale candle cache is silently used.")
+    st.info("Both public providers will be retried on the next refresh. No stale candle cache is silently used.")
 else:
     latest = candles[-1]
     now = datetime.now(timezone.utc)
@@ -105,9 +105,12 @@ else:
         m5.metric("Max drawdown", f"{result.max_drawdown_pct:.2f}%")
         st.caption(
             f"{symbol} · {interval} · {len(candles)} completed candles · "
-            f"latest candle open {latest_dt:%Y-%m-%d %H:%M:%S} UTC · "
+            f"source: {market_source} · latest candle open {latest_dt:%Y-%m-%d %H:%M:%S} UTC · "
             f"approx. candle age {delay_seconds // 60} min"
         )
+        if "fallback" in market_source:
+            st.warning("Binance was unavailable, so this backtest uses Bybit linear-perpetual candles. "
+                       "Do not compare results across providers as if their candles were identical.")
         prices = pd.DataFrame({
             "Time (UTC)": [datetime.fromtimestamp(c.timestamp / 1000, tz=timezone.utc) for c in candles],
             "Close": [c.close for c in candles],
