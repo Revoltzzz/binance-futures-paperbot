@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+import math
 
 
 class Side(str, Enum):
@@ -17,8 +18,15 @@ class Candle:
     volume: float = 0.0
 
     def __post_init__(self):
+        if not isinstance(self.timestamp, int) or isinstance(self.timestamp, bool) or self.timestamp < 0:
+            raise ValueError("timestamp must be a non-negative integer")
+        values = (self.open, self.high, self.low, self.close, self.volume)
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("candle values must be finite numbers")
         if min(self.open, self.high, self.low, self.close) <= 0:
             raise ValueError("OHLC prices must be positive")
+        if self.volume < 0:
+            raise ValueError("volume must be non-negative")
         if self.high < max(self.open, self.close, self.low):
             raise ValueError("high must be the highest OHLC value")
         if self.low > min(self.open, self.close, self.high):
