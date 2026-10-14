@@ -45,8 +45,14 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
         LOG.warning("Market-data provider failed; trying next provider: %s", detail)
     LOG.info("Market data received: provider=%s candles=%d latest_candle_ms=%d",
              market_source, len(candles), candles[-1].timestamp)
-    if "kraken spot proxy" in market_source.lower():
-        raise MarketDataError("Refusing to use spot-proxy candles for a futures paper session.")
+    # This worker is specifically a Binance USDⓈ-M Futures simulator. Never
+    # advance its account using another exchange's candles: cross-exchange
+    # prices can differ and would make the paper results misleading.
+    if not market_source.startswith("Binance USDⓈ-M Futures"):
+        raise MarketDataError(
+            "Binance-only paper mode: refusing non-Binance market data "
+            f"from {market_source}. No candles were processed or account state updated; spot-proxy and other exchange fallbacks are disabled."
+        )
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     latest_age_ms = now_ms - (candles[-1].timestamp + INTERVAL_MS[interval])
     if latest_age_ms > INTERVAL_MS[interval] * 3:
