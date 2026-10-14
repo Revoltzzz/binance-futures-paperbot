@@ -182,3 +182,54 @@ def test_provider_fallback_diagnostics_expose_binance_and_bybit_errors(tmp_path)
     assert "403" in diagnostics[1]
     assert "OKX USDT perpetual swap (fallback)" in diagnostics[2]
     assert "403" in diagnostics[2]
+
+def test_okx_paginates_history_and_returns_contiguous_sorted_candles():
+    from urllib.parse import parse_qs, urlparse
+
+    requested_urls = []
+
+    def fetcher(url):
+        requested_urls.append(url)
+        params = parse_qs(urlparse(url).query)
+        if "after" not in params:
+            indexes = range(599, 299, -1)
+        else:
+            assert int(params["after"][0]) == 300 * 300000
+            indexes = [299]
+        return {
+            "code": "0",
+            "msg": "",
+            "data": [
+                [str(index * 300000), "100", "102", "99", "101", "5", "5", "500", "1"]
+                for index in indexes
+            ],
+        }
+
+    candles = load_okx_swap_klines(
+        "BTCUSDT", "5m", 301, now_ms=200_000_000,
+        fetcher=fetcher, sleep=lambda _: None,
+    )
+
+    assert len(requested_urls) == 2
+    assert len(candles) == 301
+    assert candles[0].timestamp == 299 * 300000
+    assert candles[-1].timestamp == 599 * 300000
+
+
+def test_okx_rejects_duplicate_timestamps_in_provider_response():
+    import pytest
+
+    duplicate_payload = {
+        "code": "0",
+        "msg": "",
+        "data": [
+            ["300000", "101", "103", "100", "102", "8", "8", "800", "1"],
+            ["300000", "101", "103", "100", "102", "8", "8", "800", "1"],
+        ],
+    }
+    with pytest.raises(MarketDataError, match="Duplicate OKX swap candle timestamp"):
+        load_okx_swap_klines(
+            "BTCUSDT", "5m", 2, now_ms=700000,
+            fetcher=lambda _: duplicate_payload, sleep=lambda _: None,
+        )
+
