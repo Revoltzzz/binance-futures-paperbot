@@ -105,3 +105,31 @@ def test_all_provider_failures_are_reported(tmp_path):
     assert "Binance USDⓈ-M Futures: HTTP Error 451" in str(exc.value)
     assert "Bybit USDT linear perpetual (fallback): HTTP Error 451" in str(exc.value)
     assert "Kraken spot proxy (NOT futures data): HTTP Error 451" in str(exc.value)
+
+
+
+def test_provider_fallback_diagnostics_expose_binance_and_bybit_errors(tmp_path):
+    diagnostics = []
+    candle_list = [Candle(0, 100, 102, 99, 101, 5)]
+
+    def binance_fails(**kwargs):
+        raise MarketDataError("HTTP Error 451: restricted location")
+
+    def bybit_fails(**kwargs):
+        raise MarketDataError("HTTP Error 403: access denied")
+
+    candles, source = load_public_klines(
+        cache_dir=tmp_path,
+        binance_loader=binance_fails,
+        bybit_loader=bybit_fails,
+        kraken_loader=lambda **kwargs: candle_list,
+        diagnostics=diagnostics,
+    )
+
+    assert candles == candle_list
+    assert source == "Kraken spot proxy (NOT futures data)"
+    assert len(diagnostics) == 2
+    assert "Binance USDⓈ-M Futures" in diagnostics[0]
+    assert "451" in diagnostics[0]
+    assert "Bybit USDT linear perpetual (fallback)" in diagnostics[1]
+    assert "403" in diagnostics[1]
