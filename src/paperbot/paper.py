@@ -1,3 +1,5 @@
+import math
+
 from .models import Candle, Position, Side, Trade
 from .risk import RiskConfig, RiskManager
 
@@ -5,8 +7,8 @@ from .risk import RiskConfig, RiskManager
 class PaperBroker:
     """Local-only broker. It never sends orders or contacts Binance."""
     def __init__(self, starting_balance: float = 1000.0, config: RiskConfig | None = None):
-        if starting_balance <= 0:
-            raise ValueError("starting_balance must be positive")
+        if not math.isfinite(starting_balance) or starting_balance <= 0:
+            raise ValueError("starting_balance must be a finite positive number")
         self.balance = float(starting_balance)
         self.starting_balance = float(starting_balance)
         self.risk = RiskManager(config)
@@ -14,7 +16,7 @@ class PaperBroker:
         self.trades: list[Trade] = []
 
     def open_position(self, side: Side, price: float) -> Position | None:
-        if self.position is not None or price <= 0:
+        if self.position is not None or not math.isfinite(price) or price <= 0:
             return None
         cfg = self.risk.config
         stop = price * (1 - cfg.stop_loss_pct) if side == Side.LONG else price * (1 + cfg.stop_loss_pct)
@@ -31,7 +33,7 @@ class PaperBroker:
 
     def close_position(self, price: float, reason: str = "signal") -> Trade | None:
         pos = self.position
-        if pos is None or price <= 0:
+        if pos is None or not math.isfinite(price) or price <= 0:
             return None
         gross = (price - pos.entry_price) * pos.quantity
         if pos.side == Side.SHORT:
@@ -62,6 +64,8 @@ class PaperBroker:
         return None
 
     def equity(self, mark_price: float | None = None) -> float:
+        if mark_price is not None and (not math.isfinite(mark_price) or mark_price <= 0):
+            raise ValueError("mark_price must be a finite positive number")
         if self.position is None or mark_price is None:
             return self.balance
         pos = self.position
