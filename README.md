@@ -84,3 +84,13 @@ paperbot --csv data/BTCUSDT_1h.csv --balance 1000
 
 ## Project layout
 `src/paperbot/` contains market-data, news, models, strategy, risk, paper broker, CLI and backtest code; `tests/` contains deterministic tests; `.github/` contains CI.
+
+### Paper-backtest execution-cost assumptions
+
+The paper broker applies configurable execution assumptions from `RiskConfig`:
+- **Commission:** 0.04% per entry and exit by default.
+- **Slippage:** 0.02% adverse price movement on each fill by default.
+- **Funding:** a fixed 0.01% rate per 8-hour UTC funding event by default. Positive rates charge longs and credit shorts; negative rates reverse that direction.
+
+Funding is applied at 00:00, 08:00, and 16:00 UTC when a position is open. This is a deterministic stress-test assumption, **not historical funding data**. Real funding varies by symbol and interval; use actual historical rates before drawing conclusions. The model does not yet simulate order-book depth, exchange-specific liquidation, mark-price divergence, or every gap/partial-fill behavior. Paper results are not evidence of profitability.
+
