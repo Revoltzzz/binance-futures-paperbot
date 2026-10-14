@@ -170,3 +170,25 @@ def test_backtest_fails_explicitly_when_historical_funding_rate_is_missing():
     ]
     with pytest.raises(ValueError, match="Missing historical funding rate"):
         run_backtest(candles, strategy=FirstCandleLong(), funding_rates={})
+
+
+def test_backtest_applies_historical_funding_at_nonstandard_event_timestamp():
+    class FirstCandleLong:
+        def signal(self, history):
+            return Side.LONG if len(history) == 1 else None
+
+    # A non-8-hour event proves historical mode follows the supplied venue schedule.
+    event_ms = 1_800_000_000_000 + 2 * 60 * 60 * 1000
+    candles = [
+        Candle(event_ms - 600_000, 100, 100.5, 99.5, 100),
+        Candle(event_ms - 300_000, 100, 100.5, 99.5, 100),
+        Candle(event_ms, 100, 100.5, 99.5, 100),
+    ]
+    result = run_backtest(
+        candles,
+        strategy=FirstCandleLong(),
+        funding_rates={event_ms: 0.001},
+    )
+    assert result.trades == 1
+    assert result.trade_history[0].funding_cost > 0
+
