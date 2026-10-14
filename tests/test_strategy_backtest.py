@@ -308,3 +308,18 @@ def test_cli_compares_strategies_on_a_chronological_holdout(monkeypatch, capsys)
     assert "break-retest" in output
     assert "Profitability" not in output  # no unsupported success claim
 
+
+def test_cli_walk_forward_evaluates_sequential_holdout_folds(monkeypatch, capsys):
+    import sys
+    from paperbot.cli import main
+
+    monkeypatch.setattr(
+        sys, "argv", ["paperbot", "--candles", "200", "--walk-forward", "--walk-forward-folds", "3"]
+    )
+    main()
+    output = capsys.readouterr().out
+    assert "Walk-forward: 3 sequential test folds" in output
+    assert "Fold 1" in output
+    assert "Fold 3" in output
+    assert "Parameters stay fixed" in output
+
