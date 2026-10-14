@@ -43,6 +43,14 @@ def test_non_finite_execution_prices_are_rejected():
         broker.equity(float("nan"))
 
 
+def test_marked_equity_includes_estimated_exit_fee():
+    broker = PaperBroker(1000)
+    pos = broker.open_position(Side.LONG, 100)
+    assert pos is not None
+    expected = broker.balance + (105 - 100) * pos.quantity - 105 * pos.quantity * 0.0004
+    assert broker.equity(105) == pytest.approx(expected)
+
+
 def test_trade_pnl_and_balance_include_entry_and_exit_fees():
     broker = PaperBroker(1000)
     pos = broker.open_position(Side.LONG, 100)
