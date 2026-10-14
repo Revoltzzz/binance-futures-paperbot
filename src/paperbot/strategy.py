@@ -1,10 +1,14 @@
+import math
+
 from .models import Candle, Side
 
 
 def ema(values: list[float], period: int) -> list[float]:
     """EMA with a seeded simple average; entries before seed are NaN."""
-    if period < 1:
-        raise ValueError("period must be >= 1")
+    if not isinstance(period, int) or isinstance(period, bool) or period < 1:
+        raise ValueError("period must be an integer >= 1")
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("EMA values must be finite")
     out = [float("nan")] * len(values)
     if len(values) < period:
         return out
@@ -21,8 +25,12 @@ def ema(values: list[float], period: int) -> list[float]:
 class EmaCrossStrategy:
     """Simple EMA crossover baseline; demo only, no profit guarantee."""
     def __init__(self, fast_period: int = 5, slow_period: int = 12):
-        if fast_period < 1 or slow_period <= fast_period:
-            raise ValueError("require 1 <= fast_period < slow_period")
+        if (
+            not isinstance(fast_period, int) or isinstance(fast_period, bool)
+            or not isinstance(slow_period, int) or isinstance(slow_period, bool)
+            or fast_period < 1 or slow_period <= fast_period
+        ):
+            raise ValueError("require integer periods with 1 <= fast_period < slow_period")
         self.fast_period, self.slow_period = fast_period, slow_period
 
     def signal(self, candles: list[Candle]) -> Side | None:
@@ -54,14 +62,14 @@ class BreakRetestStrategy:
         retest_bars: int = 3,
         tolerance_pct: float = 0.002,
     ):
-        if lookback < 2:
-            raise ValueError("lookback must be >= 2")
-        if trend_period < 2:
-            raise ValueError("trend_period must be >= 2")
-        if retest_bars < 1:
-            raise ValueError("retest_bars must be >= 1")
-        if not 0 <= tolerance_pct < 0.05:
-            raise ValueError("tolerance_pct must be in [0, 0.05)")
+        if not isinstance(lookback, int) or isinstance(lookback, bool) or lookback < 2:
+            raise ValueError("lookback must be an integer >= 2")
+        if not isinstance(trend_period, int) or isinstance(trend_period, bool) or trend_period < 2:
+            raise ValueError("trend_period must be an integer >= 2")
+        if not isinstance(retest_bars, int) or isinstance(retest_bars, bool) or retest_bars < 1:
+            raise ValueError("retest_bars must be an integer >= 1")
+        if not math.isfinite(tolerance_pct) or not 0 <= tolerance_pct < 0.05:
+            raise ValueError("tolerance_pct must be finite and in [0, 0.05)")
         self.lookback = lookback
         self.trend_period = trend_period
         self.retest_bars = retest_bars
@@ -75,7 +83,7 @@ class BreakRetestStrategy:
         closes = [c.close for c in candles]
         trend = ema(closes, self.trend_period)[-1]
         current = candles[-1]
-        if not (trend == trend):  # NaN guard for an unseeded EMA.
+        if not math.isfinite(trend):
             return None
 
         first_break_index = max(self.lookback, len(candles) - 1 - self.retest_bars)
