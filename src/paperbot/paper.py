@@ -72,4 +72,5 @@ class PaperBroker:
         unrealized = (mark_price - pos.entry_price) * pos.quantity
         if pos.side == Side.SHORT:
             unrealized = -unrealized
-        return self.balance + unrealized
+        estimated_exit_fee = mark_price * pos.quantity * self.risk.config.fee_rate
+        return self.balance + unrealized - estimated_exit_fee
