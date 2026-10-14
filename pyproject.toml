@@ -16,6 +16,7 @@ web = ["streamlit>=1.38,<2", "streamlit-autorefresh>=1.0.1", "pandas>=2.0"]
 
 [project.scripts]
 paperbot = "paperbot.cli:main"
+paperbot-worker = "paperbot.worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
