@@ -3,6 +3,7 @@ import pytest
 from paperbot.backtest import run_backtest
 from paperbot.data import demo_candles
 from paperbot.models import Candle, Side
+from paperbot.risk import RiskConfig
 from paperbot.strategy import EmaCrossStrategy, ema
 
 
@@ -44,7 +45,6 @@ def test_backtest_executes_signal_at_next_candle_open():
     ]
     result = run_backtest(candles, strategy=FirstCandleLong())
     assert result.trades == 1
-    # The signal uses candle 1's close, but the entry occurs at candle 2's open.
     assert result.ending_balance > 1000
 
 
@@ -57,6 +57,24 @@ def test_backtest_rejects_duplicate_or_out_of_order_timestamps():
 def test_backtest_rejects_nonpositive_starting_balance():
     with pytest.raises(ValueError, match="starting_balance"):
         run_backtest([], starting_balance=0)
+
+
+def test_daily_loss_limit_closes_position_and_blocks_same_day_entries():
+    class RepeatedLong:
+        def signal(self, history):
+            return Side.LONG if history else None
+
+    # A sharp gap down on candle 2 causes equity loss beyond the configured 3%
+    # daily limit. Once tripped, the same UTC day must not create fresh entries.
+    day = 1_800_000_000_000
+    candles = [
+        Candle(day, 100, 100.5, 99.5, 100),
+        Candle(day + 300_000, 90, 90.5, 89.5, 90),
+        Candle(day + 600_000, 90, 90.5, 89.5, 90),
+        Candle(day + 900_000, 90, 90.5, 89.5, 90),
+    ]
+    result = run_backtest(candles, strategy=RepeatedLong())
+    assert result.trades <= 1
 
 
 def test_candle_ohlc_validation():
