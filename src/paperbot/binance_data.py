@@ -76,8 +76,11 @@ def parse_klines(payload: object, interval: str, now_ms: int | None = None) -> l
         seen.add(open_time)
         if open_time < 0 or close_time < open_time:
             raise MarketDataError(f"Invalid candle timestamps at {open_time}")
-        if close_time - open_time >= duration:
-            raise MarketDataError(f"Candle duration does not match interval {interval} at {open_time}")
+        expected_close_time = open_time + duration - 1
+        if close_time != expected_close_time:
+            raise MarketDataError(
+                f"Candle close timestamp does not match interval {interval} at {open_time}"
+            )
         if close_time < now:
             parsed.append((open_time, close_time, candle))
 
