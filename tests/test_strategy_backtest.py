@@ -293,3 +293,18 @@ def test_warmup_and_holdout_must_not_overlap():
     with pytest.raises(ValueError, match="warmup and test candles"):
         run_backtest([candle], warmup_candles=[candle])
 
+
+def test_cli_compares_strategies_on_a_chronological_holdout(monkeypatch, capsys):
+    import sys
+    from paperbot.cli import main
+
+    monkeypatch.setattr(
+        sys, "argv", ["paperbot", "--candles", "100", "--compare-strategies"]
+    )
+    main()
+    output = capsys.readouterr().out
+    assert "Holdout:" in output
+    assert "ema" in output
+    assert "break-retest" in output
+    assert "Profitability" not in output  # no unsupported success claim
+
