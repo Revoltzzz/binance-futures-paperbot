@@ -1,7 +1,7 @@
 from paperbot.binance_data import MarketDataError
 from paperbot.models import Candle
 from paperbot.public_market_data import (
-    load_bybit_klines, load_kraken_spot_klines, load_public_klines,
+    load_bybit_klines, load_kraken_spot_klines, load_okx_swap_klines, load_public_klines,
 )
 
 
@@ -12,6 +12,16 @@ def bybit_payload():
             ["300000", "101", "103", "100", "102", "8", "800"],
             ["0", "100", "102", "99", "101", "5", "500"],
         ]},
+    }
+
+
+def okx_payload():
+    return {
+        "code": "0", "msg": "",
+        "data": [
+            ["300000", "101", "103", "100", "102", "8", "8", "800", "1"],
+            ["0", "100", "102", "99", "101", "5", "5", "500", "1"],
+        ],
     }
 
 
@@ -38,6 +48,21 @@ def test_bybit_nonzero_response_code_is_explicit():
         load_bybit_klines(fetcher=lambda _: {"retCode": 10001, "retMsg": "bad symbol"})
 
 
+def test_okx_swap_rows_are_sorted_and_parsed_as_completed_candles():
+    candles = load_okx_swap_klines(
+        "BTCUSDT", "5m", 2, now_ms=700000,
+        fetcher=lambda url: okx_payload(), sleep=lambda _: None,
+    )
+    assert [c.timestamp for c in candles] == [0, 300000]
+    assert candles[-1].close == 102
+
+
+def test_okx_nonzero_response_code_is_explicit():
+    import pytest
+    with pytest.raises(MarketDataError, match="OKX swap market-data response error"):
+        load_okx_swap_klines(fetcher=lambda _: {"code": "51000", "msg": "bad instrument"})
+
+
 def test_kraken_spot_rows_are_parsed_and_limited():
     candles = load_kraken_spot_klines("BTCUSDT", "5m", 1, now_ms=700000,
                                      fetcher=lambda url: kraken_payload(), sleep=lambda _: None)
@@ -59,13 +84,26 @@ def test_public_provider_falls_back_and_labels_source(tmp_path):
     assert (tmp_path / "bybit" / "BTCUSDT_5m.json").exists()
 
 
-def test_kraken_is_used_when_both_futures_providers_fail(tmp_path):
+def test_okx_is_used_when_binance_and_bybit_fail(tmp_path):
     def fail(**kwargs):
         raise MarketDataError("blocked")
     candle_list = [Candle(0, 100, 102, 99, 101, 5)]
     candles, source = load_public_klines(
         cache_dir=tmp_path, binance_loader=fail, bybit_loader=fail,
-        kraken_loader=lambda **kwargs: candle_list,
+        okx_loader=lambda **kwargs: candle_list,
+    )
+    assert candles == candle_list
+    assert source == "OKX USDT perpetual swap (fallback)"
+    assert (tmp_path / "okx" / "BTCUSDT_5m.json").exists()
+
+
+def test_kraken_is_used_only_when_all_futures_providers_fail(tmp_path):
+    def fail(**kwargs):
+        raise MarketDataError("blocked")
+    candle_list = [Candle(0, 100, 102, 99, 101, 5)]
+    candles, source = load_public_klines(
+        cache_dir=tmp_path, binance_loader=fail, bybit_loader=fail,
+        okx_loader=fail, kraken_loader=lambda **kwargs: candle_list,
     )
     assert candles == candle_list
     assert source == "Kraken spot proxy (NOT futures data)"
@@ -101,11 +139,11 @@ def test_all_provider_failures_are_reported(tmp_path):
     import pytest
     with pytest.raises(MarketDataError, match="All public market-data providers failed") as exc:
         load_public_klines(cache_dir=tmp_path, binance_loader=fail,
-                           bybit_loader=fail, kraken_loader=fail)
+                           bybit_loader=fail, okx_loader=fail, kraken_loader=fail)
     assert "Binance USDⓈ-M Futures: HTTP Error 451" in str(exc.value)
     assert "Bybit USDT linear perpetual (fallback): HTTP Error 451" in str(exc.value)
+    assert "OKX USDT perpetual swap (fallback): HTTP Error 451" in str(exc.value)
     assert "Kraken spot proxy (NOT futures data): HTTP Error 451" in str(exc.value)
-
 
 
 def test_provider_fallback_diagnostics_expose_binance_and_bybit_errors(tmp_path):
@@ -118,18 +156,24 @@ def test_provider_fallback_diagnostics_expose_binance_and_bybit_errors(tmp_path)
     def bybit_fails(**kwargs):
         raise MarketDataError("HTTP Error 403: access denied")
 
+    def okx_fails(**kwargs):
+        raise MarketDataError("HTTP Error 403: access denied")
+
     candles, source = load_public_klines(
         cache_dir=tmp_path,
         binance_loader=binance_fails,
         bybit_loader=bybit_fails,
+        okx_loader=okx_fails,
         kraken_loader=lambda **kwargs: candle_list,
         diagnostics=diagnostics,
     )
 
     assert candles == candle_list
     assert source == "Kraken spot proxy (NOT futures data)"
-    assert len(diagnostics) == 2
+    assert len(diagnostics) == 3
     assert "Binance USDⓈ-M Futures" in diagnostics[0]
     assert "451" in diagnostics[0]
     assert "Bybit USDT linear perpetual (fallback)" in diagnostics[1]
     assert "403" in diagnostics[1]
+    assert "OKX USDT perpetual swap (fallback)" in diagnostics[2]
+    assert "403" in diagnostics[2]
