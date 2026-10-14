@@ -139,25 +139,35 @@ def run_backtest(
         ))
         position_entry_timestamp = None
 
+    previous_timestamp_ms: int | None = None
     for candle in candles:
-        # The default model assumes USDⓈ-M funding at 00:00, 08:00, and 16:00 UTC.
-        # Historical mode instead applies every supplied event that aligns with a candle,
-        # since other venues may use different funding schedules.
-        seconds = candle.timestamp / 1000 if candle.timestamp > 10_000_000_000 else candle.timestamp
-        funding_timestamp_ms = candle.timestamp if candle.timestamp > 10_000_000_000 else candle.timestamp * 1000
-        at_default_funding_boundary = seconds % (8 * 60 * 60) == 0
+        # Candle timestamps denote interval starts. A funding event between candle
+        # starts is applied at the next candle open as a conservative, explicit proxy
+        # for the mark price; OHLC data cannot recover the exact settlement mark.
+        timestamp_ms = candle.timestamp if candle.timestamp > 10_000_000_000 else candle.timestamp * 1000
+        seconds = timestamp_ms / 1000
         if broker.position is not None:
             if funding_rates is None:
-                if at_default_funding_boundary:
+                if seconds % (8 * 60 * 60) == 0:
                     broker.apply_funding(candle.open)
-            elif funding_timestamp_ms in funding_rates:
-                broker.apply_funding(candle.open, funding_rates[funding_timestamp_ms])
-            elif at_default_funding_boundary:
-                # Preserve an explicit failure for missing expected Binance-style
-                # 8-hour events rather than silently substituting the fixed-rate model.
-                raise ValueError(
-                    f"Missing historical funding rate at timestamp {funding_timestamp_ms} ms"
-                )
+            else:
+                if previous_timestamp_ms is not None:
+                    event_times = sorted(
+                        event_ms for event_ms in funding_rates
+                        if previous_timestamp_ms < event_ms <= timestamp_ms
+                    )
+                    for event_ms in event_times:
+                        broker.apply_funding(candle.open, funding_rates[event_ms])
+
+                    # Fail closed if an expected standard 8-hour settlement is inside
+                    # this interval but absent from the supplied historical series.
+                    first_boundary = (previous_timestamp_ms // 28_800_000 + 1) * 28_800_000
+                    for boundary_ms in range(first_boundary, timestamp_ms + 1, 28_800_000):
+                        if boundary_ms not in funding_rates:
+                            raise ValueError(
+                                f"Missing historical funding rate at timestamp {boundary_ms} ms"
+                            )
+        previous_timestamp_ms = timestamp_ms
 
         candle_session = _utc_session(candle.timestamp)
         if candle_session != session:
