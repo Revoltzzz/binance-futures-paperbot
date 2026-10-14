@@ -16,6 +16,7 @@ class TradeJournalEntry:
     quantity: float
     gross_pnl: float
     fees: float
+    funding_cost: float
     net_pnl: float
     exit_reason: str
     balance_after: float
@@ -97,8 +98,9 @@ def run_backtest(
             entry_price=trade.entry_price,
             exit_price=trade.exit_price,
             quantity=trade.quantity,
-            gross_pnl=trade.pnl + trade.fees,
+            gross_pnl=trade.pnl + trade.fees + trade.funding_cost,
             fees=trade.fees,
+            funding_cost=trade.funding_cost,
             net_pnl=trade.pnl,
             exit_reason=trade.reason,
             balance_after=broker.balance,
@@ -106,6 +108,12 @@ def run_backtest(
         position_entry_timestamp = None
 
     for candle in candles:
+        # USDⓈ-M funding is exchanged at 00:00, 08:00, and 16:00 UTC.
+        # This deterministic approximation uses the configured fixed rate, not historical rates.
+        seconds = candle.timestamp / 1000 if candle.timestamp > 10_000_000_000 else candle.timestamp
+        if seconds % (8 * 60 * 60) == 0 and broker.position is not None:
+            broker.apply_funding(candle.open)
+
         candle_session = _utc_session(candle.timestamp)
         if candle_session != session:
             session = candle_session
