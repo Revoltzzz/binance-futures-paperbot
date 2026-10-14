@@ -4,6 +4,7 @@ from .backtest import run_backtest
 from .binance_data import MarketDataError, load_binance_klines
 from .data import demo_candles, load_csv
 from .news import NewsError, fetch_latest_news, print_news, watch_news
+from .public_market_data import load_okx_funding_rates, load_okx_swap_klines
 
 
 def main() -> None:
@@ -12,6 +13,8 @@ def main() -> None:
     source.add_argument("--csv", help="OHLC CSV path")
     source.add_argument("--binance", action="store_true",
                         help="download public Binance USDⓈ-M Futures candles (no API key; network required)")
+    source.add_argument("--okx", action="store_true",
+                        help="download public OKX perpetual candles and historical OKX funding rates (no API key)")
     news_mode = parser.add_mutually_exclusive_group()
     news_mode.add_argument("--news-only", action="store_true", help="fetch and print latest crypto-market headlines, then exit")
     news_mode.add_argument("--watch-news", action="store_true", help="repeatedly refresh news until Ctrl+C")
@@ -29,6 +32,7 @@ def main() -> None:
     if args.balance <= 0:
         parser.error("--balance must be positive")
     try:
+        funding_rates = None
         if args.news_only:
             print_news(fetch_latest_news(limit=args.news_limit, cache_path=args.news_cache))
             return
@@ -44,14 +48,20 @@ def main() -> None:
         elif args.binance:
             candles = load_binance_klines(args.symbol, args.interval, args.limit, args.cache_dir)
             source_label = f"Binance public USDⓈ-M Futures candles: {args.symbol.upper()} {args.interval}"
+        elif args.okx:
+            candles = load_okx_swap_klines(args.symbol, args.interval, args.limit)
+            funding_rates = load_okx_funding_rates(args.symbol, 400)
+            source_label = f"OKX public perpetual candles + historical funding: {args.symbol.upper()} {args.interval}"
         else:
             candles = demo_candles(args.candles)
             source_label = "deterministic synthetic demo candles (not real market data)"
-        result = run_backtest(candles, args.balance)
+        result = run_backtest(candles, args.balance, funding_rates=funding_rates)
     except (ValueError, OSError, MarketDataError, NewsError) as exc:
         parser.error(str(exc))
     print("PAPER BACKTEST ONLY — no real orders are placed")
     print(f"Data source: {source_label}")
+    if args.okx:
+        print("Funding: historical OKX rates; exchange-specific, not Binance funding rates")
     print(f"Candles: {len(candles)}")
     print(f"Starting balance: {result.starting_balance:.2f}")
     print(f"Ending balance:   {result.ending_balance:.2f}")
