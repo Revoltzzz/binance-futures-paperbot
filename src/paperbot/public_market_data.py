@@ -127,8 +127,10 @@ def load_public_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: int
     cache_dir: str | Path = ".cache/market", *,
     binance_loader: Callable[..., list[Candle]] | None = None,
     bybit_loader: Callable[..., list[Candle]] | None = None,
-    kraken_loader: Callable[..., list[Candle]] | None = None) -> tuple[list[Candle], str]:
-    """Try Binance Futures, Bybit Futures, then clearly labeled Kraken spot proxy."""
+    kraken_loader: Callable[..., list[Candle]] | None = None,
+    diagnostics: list[str] | None = None) -> tuple[list[Candle], str]:
+    """Try public candle providers in order and optionally expose fallback diagnostics."""
+
     from .binance_data import load_binance_klines
     errors: list[str] = []
     providers = [
@@ -146,5 +148,8 @@ def load_public_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: int
             _write_cache(cache_dir, cache_provider, symbol, interval, candles)
             return candles, label
         except (MarketDataError, OSError, ValueError) as exc:
-            errors.append(f"{label}: {exc}")
+            detail = f"{label}: {type(exc).__name__}: {exc}"
+            errors.append(detail)
+            if diagnostics is not None:
+                diagnostics.append(detail)
     raise MarketDataError("All public market-data providers failed. " + " | ".join(errors))
