@@ -17,7 +17,7 @@ from paperbot.binance_data import MarketDataError
 from paperbot.models import Candle
 from paperbot.news import NewsError, NewsItem, fetch_latest_news
 from paperbot.public_market_data import load_public_klines
-from paperbot.strategy import EmaCrossStrategy
+from paperbot.strategy import BreakRetestStrategy, EmaCrossStrategy
 
 ROOT = Path(".cache/web")
 st.set_page_config(page_title="PaperBot Market Lab", page_icon="📈", layout="wide")
@@ -204,6 +204,137 @@ else:
         )
         with st.expander("Inspect recent candle data"):
             st.dataframe(prices.tail(100).sort_index(ascending=False), use_container_width=True)
+
+        st.divider()
+        st.subheader("Strategy lab")
+        st.caption(
+            "Compare the existing EMA baseline with the experimental break-and-retest candidate. "
+            "These are historical paper simulations, not live signals or profit forecasts."
+        )
+        evaluation_mode = st.selectbox(
+            "Evaluation mode",
+            [
+                "Single-strategy backtest",
+                "Compare strategies (70/30 holdout)",
+                "Walk-forward (3 sequential folds)",
+            ],
+            key="strategy_lab_evaluation_mode",
+        )
+
+        if evaluation_mode == "Single-strategy backtest":
+            candidate_label = st.selectbox(
+                "Strategy candidate",
+                ["EMA crossover", "Break-and-retest"],
+                key="strategy_lab_candidate",
+            )
+            candidate = (
+                EmaCrossStrategy(fast_period=fast_period, slow_period=slow_period)
+                if candidate_label == "EMA crossover"
+                else BreakRetestStrategy()
+            )
+            lab_result = run_backtest(candles, float(starting_balance), candidate)
+            lab_metrics = st.columns(5)
+            lab_metrics[0].metric("Return", f"{lab_result.total_return_pct:+.2f}%")
+            lab_metrics[1].metric("Ending balance", f"{lab_result.ending_balance:,.2f} USDT")
+            lab_metrics[2].metric("Closed trades", str(lab_result.trades))
+            lab_metrics[3].metric("Max drawdown", f"{lab_result.max_drawdown_pct:.2f}%")
+            lab_metrics[4].metric(
+                "Profit factor",
+                "n/a" if lab_result.profit_factor is None else f"{lab_result.profit_factor:.2f}",
+            )
+            st.caption(
+                f"{candidate_label} · {lab_result.wins} wins / {lab_result.losses} losses · "
+                f"average net P&L per trade {lab_result.expectancy_per_trade:.4f} USDT"
+            )
+
+        elif evaluation_mode == "Compare strategies (70/30 holdout)":
+            split_index = int(len(candles) * 0.7)
+            if split_index < 20 or len(candles) - split_index < 2:
+                st.warning("Not enough candles for this comparison. Load more historical candles.")
+            else:
+                warmup_candles = candles[:split_index]
+                test_candles = candles[split_index:]
+                candidates = [
+                    ("EMA crossover", EmaCrossStrategy(fast_period=fast_period, slow_period=slow_period)),
+                    ("Break-and-retest", BreakRetestStrategy()),
+                ]
+                comparison_rows = []
+                for candidate_name, candidate in candidates:
+                    candidate_result = run_backtest(
+                        test_candles,
+                        float(starting_balance),
+                        strategy=candidate,
+                        warmup_candles=warmup_candles,
+                    )
+                    comparison_rows.append({
+                        "Strategy": candidate_name,
+                        "Return (%)": round(candidate_result.total_return_pct, 3),
+                        "Max drawdown (%)": round(candidate_result.max_drawdown_pct, 3),
+                        "Trades": candidate_result.trades,
+                        "Win rate (%)": round(
+                            candidate_result.wins / candidate_result.trades * 100, 2
+                        ) if candidate_result.trades else 0.0,
+                        "Profit factor": (
+                            "n/a" if candidate_result.profit_factor is None
+                            else round(candidate_result.profit_factor, 3)
+                        ),
+                        "Expectancy (USDT/trade)": round(candidate_result.expectancy_per_trade, 4),
+                    })
+                st.dataframe(pd.DataFrame(comparison_rows), use_container_width=True, hide_index=True)
+                st.caption(
+                    f"Chronological holdout: first {split_index} candles are warm-up only; "
+                    f"the final {len(test_candles)} candles are evaluated. Parameters are not optimized."
+                )
+
+        else:
+            fold_count = 3
+            first_test_index = len(candles) // 2
+            remaining = len(candles) - first_test_index
+            fold_size = remaining // fold_count
+            if first_test_index < 50 or fold_size < 10:
+                st.warning("Walk-forward evaluation needs at least 50 warm-up candles and 10 candles per test fold.")
+            else:
+                candidates = [
+                    ("EMA crossover", EmaCrossStrategy(fast_period=fast_period, slow_period=slow_period)),
+                    ("Break-and-retest", BreakRetestStrategy()),
+                ]
+                fold_rows = []
+                for fold_index in range(fold_count):
+                    start_index = first_test_index + fold_index * fold_size
+                    end_index = (
+                        len(candles) if fold_index == fold_count - 1
+                        else start_index + fold_size
+                    )
+                    fold_warmup = candles[:start_index]
+                    fold_candles = candles[start_index:end_index]
+                    for candidate_name, candidate in candidates:
+                        fold_result = run_backtest(
+                            fold_candles,
+                            float(starting_balance),
+                            strategy=candidate,
+                            warmup_candles=fold_warmup,
+                        )
+                        fold_rows.append({
+                            "Fold": fold_index + 1,
+                            "Strategy": candidate_name,
+                            "Return (%)": round(fold_result.total_return_pct, 3),
+                            "Max drawdown (%)": round(fold_result.max_drawdown_pct, 3),
+                            "Trades": fold_result.trades,
+                            "Win rate (%)": round(
+                                fold_result.wins / fold_result.trades * 100, 2
+                            ) if fold_result.trades else 0.0,
+                            "Profit factor": (
+                                "n/a" if fold_result.profit_factor is None
+                                else round(fold_result.profit_factor, 3)
+                            ),
+                            "Expectancy (USDT/trade)": round(fold_result.expectancy_per_trade, 4),
+                        })
+                st.dataframe(pd.DataFrame(fold_rows), use_container_width=True, hide_index=True)
+                st.caption(
+                    "Each fold resets the paper balance; earlier candles are warm-up only. "
+                    "Compare consistency across folds rather than adding returns together. "
+                    "This is a stability check, not proof of a profitable edge."
+                )
     except (ValueError, ArithmeticError) as exc:
         st.error(f"Could not calculate the backtest: {exc}")
 
