@@ -44,20 +44,20 @@ class BacktestResult:
     risk_events: tuple[RiskJournalEntry, ...] = ()
 
     @property
-    def gross_profit(self) -> float:
+    def positive_net_pnl(self) -> float:
         """Sum of positive net trade P&L after modeled costs."""
         return sum(max(0.0, trade.net_pnl) for trade in self.trade_history)
 
     @property
-    def gross_loss(self) -> float:
+    def negative_net_pnl(self) -> float:
         """Absolute sum of negative net trade P&L after modeled costs."""
         return sum(abs(min(0.0, trade.net_pnl)) for trade in self.trade_history)
 
     @property
     def profit_factor(self) -> float | None:
         """Positive P&L divided by absolute negative P&L; None if no losses occurred."""
-        loss = self.gross_loss
-        return self.gross_profit / loss if loss > 0 else None
+        loss = self.negative_net_pnl
+        return self.positive_net_pnl / loss if loss > 0 else None
 
     @property
     def expectancy_per_trade(self) -> float:
