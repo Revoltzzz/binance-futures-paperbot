@@ -110,3 +110,32 @@ def test_funding_cost_is_included_in_trade_net_pnl():
         (trade.exit_price - trade.entry_price) * trade.quantity
         - trade.fees - trade.funding_cost
     )
+
+
+
+def test_long_stop_loss_gap_fills_at_worse_open_price():
+    broker = PaperBroker(1000)
+    pos = broker.open_position(Side.LONG, 100)
+    assert pos is not None
+    gap_open = pos.stop_price - 5
+    trade = broker.on_candle(Candle(2, gap_open, gap_open + 1, gap_open - 1, gap_open))
+    assert trade is not None and trade.reason == "stop_loss"
+    assert trade.exit_price == pytest.approx(gap_open * (1 - broker.risk.config.slippage_rate))
+
+
+def test_short_stop_loss_gap_fills_at_worse_open_price():
+    broker = PaperBroker(1000)
+    pos = broker.open_position(Side.SHORT, 100)
+    assert pos is not None
+    gap_open = pos.stop_price + 5
+    trade = broker.on_candle(Candle(2, gap_open, gap_open + 1, gap_open - 1, gap_open))
+    assert trade is not None and trade.reason == "stop_loss"
+    assert trade.exit_price == pytest.approx(gap_open * (1 + broker.risk.config.slippage_rate))
+
+
+def test_stop_is_still_checked_before_target_if_both_cross():
+    broker = PaperBroker(1000)
+    pos = broker.open_position(Side.LONG, 100)
+    assert pos is not None
+    trade = broker.on_candle(Candle(2, 100, pos.take_profit_price + 1, pos.stop_price - 1, 100))
+    assert trade is not None and trade.reason == "stop_loss"
