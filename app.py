@@ -15,6 +15,7 @@ from streamlit_autorefresh import st_autorefresh
 from paperbot.backtest import run_backtest
 from paperbot.binance_data import MarketDataError
 from paperbot.models import Candle
+from paperbot.session import PaperTradingSession
 from paperbot.news import NewsError, NewsItem, fetch_latest_news
 from paperbot.public_market_data import load_public_klines
 from paperbot.strategy import BreakRetestStrategy, EmaCrossStrategy
@@ -335,6 +336,105 @@ else:
                     "Compare consistency across folds rather than adding returns together. "
                     "This is a stability check, not proof of a profitable edge."
                 )
+        st.divider()
+        st.subheader("Incremental paper-trading session")
+        st.caption(
+            "Start a separate virtual account that processes each newly completed candle once. "
+            "It uses the selected public market-data provider, simulated fills, stop-loss/take-profit, "
+            "modeled fees/slippage/funding, and a daily-loss circuit breaker. It never places exchange orders. "
+            "Session state is limited to this browser session and can be lost on server restart."
+        )
+        session_strategy_label = st.selectbox(
+            "Paper-session strategy",
+            ["EMA crossover", "Break-and-retest"],
+            key="paper_session_strategy",
+        )
+        if st.button("Start / reset paper session", key="start_paper_session", use_container_width=True):
+            session_strategy_name = "ema" if session_strategy_label == "EMA crossover" else "break-retest"
+            st.session_state["paperbot_live_session"] = PaperTradingSession(
+                symbol=symbol,
+                interval=interval,
+                market_source=market_source,
+                starting_balance=float(starting_balance),
+                strategy_name=session_strategy_name,
+                fast_period=fast_period,
+                slow_period=slow_period,
+                initial_candles=candles,
+            )
+            st.success("Paper session initialized. It will wait for the next newly completed candle before generating its first session trade.")
+
+        paper_session = st.session_state.get("paperbot_live_session")
+        if paper_session is not None:
+            settings_match = paper_session.symbol == symbol and paper_session.interval == interval
+            if not settings_match:
+                st.warning(
+                    f"This session is for {paper_session.symbol} {paper_session.interval}. "
+                    "Restore those market settings or start/reset the session."
+                )
+                session_mark = None
+            else:
+                processed_count = paper_session.process_new_candles(candles, market_source)
+                if paper_session.paused_reason:
+                    st.warning(f"Paper session paused: {paper_session.paused_reason}")
+                    session_mark = None
+                else:
+                    if processed_count:
+                        st.success(f"Processed {processed_count} new completed candle(s).")
+                    else:
+                        st.info("Paper session is active and waiting for the next completed candle.")
+                    session_mark = latest.close
+
+            session_equity = (
+                paper_session.broker.equity(session_mark)
+                if session_mark is not None else paper_session.broker.equity()
+            )
+            session_position = paper_session.broker.position
+            sm1, sm2, sm3, sm4, sm5 = st.columns(5)
+            sm1.metric("Session balance", f"{paper_session.broker.balance:,.2f} USDT")
+            sm2.metric("Marked equity", f"{session_equity:,.2f} USDT")
+            sm3.metric(
+                "Open position",
+                "Flat" if session_position is None else session_position.side.value.upper(),
+            )
+            sm4.metric("Closed session trades", str(len(paper_session.trades)))
+            sm5.metric("Daily loss guard", "HALTED" if paper_session.daily_halted else "Armed")
+
+            if session_position is not None:
+                st.caption(
+                    f"Open {session_position.side.value.upper()} · entry "
+                    f"{session_position.entry_price:,.4f} · stop {session_position.stop_price:,.4f} · "
+                    f"target {session_position.take_profit_price:,.4f}"
+                )
+
+            if paper_session.events:
+                st.subheader("Paper-session risk events")
+                st.dataframe(
+                    pd.DataFrame(paper_session.events[-100:]),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            if paper_session.trades:
+                st.subheader("Incremental paper-session journal")
+                session_journal = pd.DataFrame(paper_session.trades)
+                st.dataframe(
+                    session_journal.tail(100),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.download_button(
+                    "Download session journal (CSV)",
+                    data=session_journal.to_csv(index=False).encode("utf-8"),
+                    file_name=f"paper_session_{paper_session.symbol}_{paper_session.interval}.csv",
+                    mime="text/csv",
+                    key="download_paper_session_journal",
+                    use_container_width=True,
+                )
+            else:
+                st.caption(
+                    "No session trades have closed yet. The historical backtest above is separate "
+                    "from this session account."
+                )
+
     except (ValueError, ArithmeticError) as exc:
         st.error(f"Could not calculate the backtest: {exc}")
 
