@@ -17,7 +17,7 @@ A safety-first Python starter for **local paper trading and backtesting**. It ne
 
 ## Browser dashboard (no local setup)
 
-The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It displays public market candles for BTCUSDT or ETHUSDT, a simple EMA paper backtest, and recent headlines. Provider order: Binance USDⓈ-M Futures, Bybit USDT linear perpetual, OKX USDT perpetual swap, then Kraken spot proxy if all derivatives APIs are blocked. Provider failures are shown in the dashboard. The source is visibly labeled. **Kraken is spot data, not futures data**, so it is only a rough market proxy and cannot validate futures-specific behavior. OKX public swap candles need no API key. Different providers have different candles and prices, so note the provider before interpreting results. It has automatic browser refresh and a manual refresh control. It does **not** place real orders or need API keys.
+The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It displays public market candles for BTCUSDT or ETHUSDT, an EMA backtest, a Strategy Lab for EMA vs. Break-and-Retest comparison and three-fold walk-forward evaluation, and recent headlines. It also includes an incremental paper-trading session that processes newly completed candles once, simulates entries/exits, and applies the existing stop-loss/take-profit, modeled costs, and daily-loss guard. The virtual account is held in the current Streamlit browser session only; it is **not durable across server restarts** and is not a 24/7 background worker. Provider order: Binance USDⓈ-M Futures, Bybit USDT linear perpetual, OKX USDT perpetual swap, then Kraken spot proxy if all derivatives APIs are blocked. Provider failures are shown in the dashboard. The source is visibly labeled. **Kraken is spot data, not futures data**, so it is only a rough market proxy and cannot validate futures-specific behavior. OKX public swap candles need no API key. Different providers have different candles and prices, so note the provider before interpreting results. It has automatic browser refresh and a manual refresh control. It does **not** place real orders or need API keys.
 
 **Open the hosted-app setup page:** [Deploy PaperBot to Streamlit Community Cloud](https://share.streamlit.io/deploy?repository=Revoltzzz%2Fbinance-futures-paperbot&branch=main&mainModule=app.py)
 
@@ -87,7 +87,7 @@ paperbot --csv data/BTCUSDT_1h.csv --balance 1000
 - Never interpret positive backtest results or news headlines as evidence of future profitability.
 
 ## Project layout
-`src/paperbot/` contains market-data, news, models, strategy, risk, paper broker, CLI and backtest code; `tests/` contains deterministic tests; `.github/` contains CI.
+`src/paperbot/` contains market-data, news, models, strategies, risk, paper broker, incremental session engine, CLI and backtest code; `tests/` contains deterministic tests; `.github/` contains CI.
 
 ### Paper-backtest execution-cost assumptions
 
