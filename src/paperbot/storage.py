@@ -46,7 +46,7 @@ class SQLitePaperStore:
             connection.close()
 
     def load(self, session_id: str) -> tuple[int, dict[str, Any]] | None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT revision, state_json FROM paper_sessions WHERE session_id = ?",
                 (session_id,),
@@ -70,7 +70,7 @@ class SQLitePaperStore:
     ) -> int:
         """Persist a snapshot; expected_revision=None means create-only."""
         payload = json.dumps(state, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT revision FROM paper_sessions WHERE session_id = ?",
