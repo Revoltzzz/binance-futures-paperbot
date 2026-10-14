@@ -72,6 +72,29 @@ def test_kraken_is_used_when_both_futures_providers_fail(tmp_path):
     assert (tmp_path / "kraken" / "BTCUSDT_5m.json").exists()
 
 
+def test_empty_primary_provider_falls_back_instead_of_crashing(tmp_path):
+    candle_list = [Candle(0, 100, 102, 99, 101, 5)]
+    candles, source = load_public_klines(
+        cache_dir=tmp_path,
+        binance_loader=lambda **kwargs: [],
+        bybit_loader=lambda **kwargs: candle_list,
+    )
+    assert candles == candle_list
+    assert source == "Bybit USDT linear perpetual (fallback)"
+
+
+def test_provider_with_gapped_candles_is_rejected_and_falls_back(tmp_path):
+    gapped = [Candle(0, 100, 102, 99, 101, 5), Candle(600000, 101, 103, 100, 102, 5)]
+    valid = [Candle(0, 100, 102, 99, 101, 5), Candle(300000, 101, 103, 100, 102, 5)]
+    candles, source = load_public_klines(
+        cache_dir=tmp_path,
+        binance_loader=lambda **kwargs: gapped,
+        bybit_loader=lambda **kwargs: valid,
+    )
+    assert candles == valid
+    assert source == "Bybit USDT linear perpetual (fallback)"
+
+
 def test_all_provider_failures_are_reported(tmp_path):
     def fail(**kwargs):
         raise MarketDataError("HTTP Error 451")
