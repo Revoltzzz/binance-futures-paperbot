@@ -23,6 +23,31 @@ The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It 
 
 To publish it, sign in to Streamlit Community Cloud with GitHub, select this repository, branch `main`, and main file `app.py`, then click Deploy. Hosting requires your own Streamlit authorization; repository changes alone cannot publish an app into your hosting account. The first deployment can take a few minutes.
 
+## Persistent background paper worker
+
+The Streamlit dashboard is for viewing and manual analysis. For an always-on paper session, this repository also includes a separate worker process and a SQLite state store. The worker polls completed public candles, saves the virtual account, open position, risk state, pending signal, recent candle history and trade journal to SQLite, and uses revision checks to prevent two worker instances from silently overwriting each other. It refuses the Kraken spot proxy, pauses if the provider changes or candle history has a gap, and refuses stale market data.
+
+**Hosted deployment:** the included `render.yaml` defines a Render background worker with a persistent disk mounted at `/var/data`. Connect the repository to Render and create a Blueprint from `render.yaml`. Persistent disks/background workers may require a paid Render plan; check the current plan and pricing before deploying. The worker needs no Binance API keys. Default settings are BTCUSDT, 5m, a 1,000 USDT virtual balance and EMA crossover. The starting balance is simulated money only.
+
+Supported environment settings:
+- `PAPERBOT_SYMBOL`: `BTCUSDT` or `ETHUSDT`
+- `PAPERBOT_INTERVAL`: `5m`, `15m` or `1h`
+- `PAPERBOT_STARTING_BALANCE`: 100–10,000 virtual USDT
+- `PAPERBOT_STRATEGY`: `ema` or `break-retest`
+- `PAPERBOT_DB_PATH`: defaults to `/var/data/paperbot.sqlite` in the Render blueprint
+- `PAPERBOT_POLL_SECONDS`: 15–3600 seconds (default 60)
+- `PAPERBOT_PAUSED=true`: kill switch; prevents new worker processing until disabled
+
+The worker writes rolling diagnostics (last 20 closed trades: win rate, net P&L and expectancy) to its logs. This is review, **not automatic strategy learning or auto-tuning**. It does not rewrite strategy rules after a loss. The SQLite file must live on a persistent disk; ordinary ephemeral container storage does not survive replacement/redeploy. Back up the database before changing infrastructure. If data has a gap or the provider changes, the session pauses instead of guessing; investigate the cause before manually resetting its stored state.
+
+For a local dry run only:
+```bash
+python -m pip install .
+PAPERBOT_DB_PATH=./paperbot.sqlite paperbot-worker
+```
+On Windows PowerShell, set environment variables using `$env:PAPERBOT_DB_PATH="./paperbot.sqlite"` before running `paperbot-worker`. The process is intended for a persistent worker host, not Streamlit Community Cloud's dashboard process.
+
+
 ## Quick start
 Python 3.10+ recommended.
 
@@ -77,8 +102,8 @@ paperbot --csv data/BTCUSDT_1h.csv --balance 1000
 
 ## Safety and limitations
 - The news watcher refreshes public feeds; it does not modify its own source code or autonomously retrain a strategy.
-- This program is a historical backtest, not a persistent trading loop.
-- Orders are simulated in memory; restarting resets the account.
+- The Streamlit dashboard session is temporary. The separate background worker persists its paper account only when configured with a durable SQLite path, such as the Render persistent disk in render.yaml.
+- The worker uses fixed strategy rules and only reports post-trade diagnostics; it does not automatically optimize parameters or claim to learn a profitable strategy.
 - The backtest enforces a UTC-day loss circuit breaker and records when it closes a position and blocks new entries for the rest of that UTC day; this remains a simplified simulation, not an exchange risk engine.
 - Funding is modeled using a fixed deterministic assumption by default; the `--okx` mode can use historical realized OKX funding rates for OKX candle backtests. OKX rates are exchange-specific and must not be presented as Binance funding history.
 - Exchange-specific liquidation, mark-price divergence, order-book depth, partial fills, and exchange precision/minimum-notional rules are not fully modeled.
