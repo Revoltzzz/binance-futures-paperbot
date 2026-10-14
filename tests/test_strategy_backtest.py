@@ -323,3 +323,14 @@ def test_cli_walk_forward_evaluates_sequential_holdout_folds(monkeypatch, capsys
     assert "Fold 3" in output
     assert "Parameters stay fixed" in output
 
+
+def test_strategy_rejects_non_integer_periods_and_non_finite_inputs():
+    with pytest.raises(ValueError, match="integer"):
+        EmaCrossStrategy(2.5, 5)
+    with pytest.raises(ValueError, match="integer"):
+        BreakRetestStrategy(lookback=2.5)
+    with pytest.raises(ValueError, match="finite"):
+        BreakRetestStrategy(tolerance_pct=float("nan"))
+    with pytest.raises(ValueError, match="finite"):
+        ema([1.0, float("nan")], 2)
+
