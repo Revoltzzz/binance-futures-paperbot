@@ -32,8 +32,7 @@ def summarize_trades(trades: Iterable[dict], window: int = 20) -> dict:
         "net_pnl": sum(values),
         "expectancy_per_trade": (sum(values) / len(values)) if values else None,
         "profit_factor": (
-            gross_profit / gross_loss if gross_loss > 0
-            else (None if gross_profit == 0 else float("inf"))
+            gross_profit / gross_loss if gross_loss > 0 else None
         ),
         "average_win": (sum(wins) / len(wins)) if wins else None,
         "average_loss": (sum(losses) / len(losses)) if losses else None,
