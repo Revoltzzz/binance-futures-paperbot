@@ -63,16 +63,16 @@ def test_daily_loss_limit_closes_position_and_blocks_same_day_entries():
         def signal(self, history):
             return Side.LONG if len(history) % 2 else Side.SHORT
 
-    # Each open position is stopped out. Three roughly 1%-risk losses plus fees
-    # should breach the 3% daily equity limit and halt further entries.
+    # Fee-aware sizing keeps each stopped trade near 1% total risk. Compounding
+    # three such losses stays just above 97% equity, so the fourth breach halts entries.
     day = 1_800_000_000_000
     candles = [
         Candle(day + i * 300_000, 100, 102, 98, 100)
         for i in range(8)
     ]
     result = run_backtest(candles, strategy=AlternatingSignals())
-    assert result.trades == 3
-    assert result.losses == 3
+    assert result.trades == 4
+    assert result.losses == 4
     assert result.ending_balance < 970
 
 
