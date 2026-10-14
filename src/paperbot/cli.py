@@ -29,6 +29,8 @@ def main() -> None:
     parser.add_argument("--cache-dir", default=".cache/binance", help="directory for downloaded candle cache")
     parser.add_argument("--strategy", choices=("ema", "break-retest"), default="ema",
                         help="strategy candidate to evaluate; EMA remains the default baseline")
+    parser.add_argument("--compare-strategies", action="store_true",
+                        help="compare EMA and break-retest on the final 30% holdout; no parameter tuning")
     parser.add_argument("--balance", type=float, default=1000.0, help="starting paper balance")
     parser.add_argument("--candles", type=int, default=300, help="number of synthetic candles for demo")
     args = parser.parse_args()
@@ -58,16 +60,50 @@ def main() -> None:
         else:
             candles = demo_candles(args.candles)
             source_label = "deterministic synthetic demo candles (not real market data)"
-        strategy = EmaCrossStrategy() if args.strategy == "ema" else BreakRetestStrategy()
-        result = run_backtest(candles, args.balance, strategy=strategy, funding_rates=funding_rates)
+        comparison_results = None
+        if args.compare_strategies:
+            split_index = int(len(candles) * 0.7)
+            if split_index < 20 or len(candles) - split_index < 2:
+                raise ValueError("strategy comparison needs at least 20 warmup candles and 2 holdout candles")
+            warmup_candles = candles[:split_index]
+            test_candles = candles[split_index:]
+            candidates = (
+                ("ema", EmaCrossStrategy()),
+                ("break-retest", BreakRetestStrategy()),
+            )
+            comparison_results = [
+                (name, run_backtest(
+                    test_candles, args.balance, strategy=candidate,
+                    funding_rates=funding_rates, warmup_candles=warmup_candles
+                ))
+                for name, candidate in candidates
+            ]
+            result = None
+        else:
+            strategy = EmaCrossStrategy() if args.strategy == "ema" else BreakRetestStrategy()
+            result = run_backtest(candles, args.balance, strategy=strategy, funding_rates=funding_rates)
     except (ValueError, OSError, MarketDataError, NewsError) as exc:
         parser.error(str(exc))
     print("PAPER BACKTEST ONLY — no real orders are placed")
     print(f"Data source: {source_label}")
-    print(f"Strategy: {args.strategy}")
     if args.okx:
         print("Funding: historical OKX rates; exchange-specific, not Binance funding rates")
     print(f"Candles: {len(candles)}")
+    if comparison_results is not None:
+        print(f"Holdout: final {len(candles) - int(len(candles) * 0.7)} candles; prior candles used only for indicator warm-up")
+        print("Strategy comparison (same holdout, same risk/cost assumptions):")
+        for name, candidate_result in comparison_results:
+            pf = "n/a" if candidate_result.profit_factor is None else f"{candidate_result.profit_factor:.3f}"
+            print(
+                f"{name:14} return={candidate_result.total_return_pct:8.2f}% "
+                f"maxDD={candidate_result.max_drawdown_pct:7.2f}% "
+                f"trades={candidate_result.trades:4d} "
+                f"winRate={(candidate_result.wins / candidate_result.trades * 100 if candidate_result.trades else 0):6.2f}% "
+                f"profitFactor={pf:>7} expectancy={candidate_result.expectancy_per_trade:9.4f}"
+            )
+        print("This is one chronological holdout, not proof of future profitability.")
+        return
+    print(f"Strategy: {args.strategy}")
     print(f"Starting balance: {result.starting_balance:.2f}")
     print(f"Ending balance:   {result.ending_balance:.2f}")
     print(f"Return:            {result.total_return_pct:.2f}%")
