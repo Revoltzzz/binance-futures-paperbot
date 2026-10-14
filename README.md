@@ -120,3 +120,14 @@ Compare the same dates, symbol, timeframe, balance, fees, slippage, and funding 
 
 **Risk note:** The course summary includes extreme account-flipping examples. This bot intentionally does not adopt 35–100% account risk per trade. Its risk controls and paper-only design take precedence over aggressive examples or marketing claims.
 
+### Compare strategy candidates on a chronological holdout
+
+Use a historical CSV with enough rows for a meaningful test when possible. The CLI holds out the final 30% of candles; the earlier 70% is passed only as indicator warm-up, so it does not generate simulated trades or contribute to reported P&L.
+
+```bash
+paperbot --csv path/to/BTCUSDT_15m.csv --compare-strategies
+paperbot --csv path/to/ETHUSDT_1h.csv --compare-strategies
+```
+
+The comparison reports return, max drawdown, trade count, win rate, net profit factor, and average net P&L per trade for both candidates using the same default risk and cost assumptions. It does not optimize parameters. One holdout is only a first screen: repeat the evaluation on multiple non-overlapping time windows and include realistic fees, slippage, funding, and sufficiently long market histories before drawing conclusions. A low trade count or no trades is a result to investigate, not a reason to weaken filters automatically.
+
