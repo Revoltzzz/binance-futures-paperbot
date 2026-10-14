@@ -76,7 +76,7 @@ paperbot --csv data/BTCUSDT_1h.csv --balance 1000
 - The news watcher refreshes public feeds; it does not modify its own source code or autonomously retrain a strategy.
 - This program is a historical backtest, not a persistent trading loop.
 - Orders are simulated in memory; restarting resets the account.
-- Daily-loss-limit helper is available, but the current backtest runner does not implement daily session resets.
+- The backtest enforces a UTC-day loss circuit breaker and records when it closes a position and blocks new entries for the rest of that UTC day; this remains a simplified simulation, not an exchange risk engine.
 - Funding payments, liquidation engine, exchange precision/minimum-notional rules, slippage and real-time feeds are not implemented.
 - Fees are approximated using a configurable flat rate; results are not exchange-grade accounting.
 - No real orders, API credentials, or live trading. Any future execution adapter must be separate, opt-in, testnet-first and independently tested.
