@@ -14,6 +14,14 @@ A safety-first Python starter for **local paper trading and backtesting**. It ne
 - Offline tests with mocked HTTP/RSS responses; GitHub Actions CI
 - No exchange credentials, signed requests, or live-order code
 
+## Browser dashboard (no local setup)
+
+The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It displays public Binance USDⓈ-M Futures candles for BTCUSDT or ETHUSDT, a simple EMA paper backtest, and recent headlines. It has automatic browser refresh and a manual refresh control. It does **not** place real orders or need API keys.
+
+**Open the hosted-app setup page:** [Deploy PaperBot to Streamlit Community Cloud](https://share.streamlit.io/deploy?repository=Revoltzzz%2Fbinance-futures-paperbot&branch=main&mainModule=app.py)
+
+To publish it, sign in to Streamlit Community Cloud with GitHub, select this repository, branch `main`, and main file `app.py`, then click Deploy. Hosting requires your own Streamlit authorization; repository changes alone cannot publish an app into your hosting account. The first deployment can take a few minutes.
+
 ## Quick start
 Python 3.10+ recommended.
 
