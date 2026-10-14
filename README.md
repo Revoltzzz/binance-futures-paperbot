@@ -131,3 +131,10 @@ paperbot --csv path/to/ETHUSDT_1h.csv --compare-strategies
 
 The comparison reports return, max drawdown, trade count, win rate, net profit factor, and average net P&L per trade for both candidates using the same default risk and cost assumptions. It does not optimize parameters. One holdout is only a first screen: repeat the evaluation on multiple non-overlapping time windows and include realistic fees, slippage, funding, and sufficiently long market histories before drawing conclusions. A low trade count or no trades is a result to investigate, not a reason to weaken filters automatically.
 
+For a stricter sequential check across multiple unseen windows, run:
+```bash
+paperbot --csv path/to/BTCUSDT_15m.csv --walk-forward --walk-forward-folds 3
+```
+
+This uses the first half of the series for warm-up, then evaluates both fixed strategies across the following sequential folds. Each fold resets the paper balance, and the strategy parameters are not optimized. It is a stability check rather than a fully optimized walk-forward system; use longer historical CSV data and inspect whether results are consistent across folds before drawing conclusions.
+
