@@ -1,0 +1,26 @@
+services:
+  - type: worker
+    name: binance-futures-paperbot-worker
+    runtime: python
+    plan: starter
+    buildCommand: python -m pip install .
+    startCommand: paperbot-worker
+    disk:
+      name: paperbot-state
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PAPERBOT_DB_PATH
+        value: /var/data/paperbot.sqlite
+      - key: PAPERBOT_SYMBOL
+        value: BTCUSDT
+      - key: PAPERBOT_INTERVAL
+        value: 5m
+      - key: PAPERBOT_STARTING_BALANCE
+        value: "1000"
+      - key: PAPERBOT_STRATEGY
+        value: ema
+      - key: PAPERBOT_POLL_SECONDS
+        value: "60"
+      - key: PAPERBOT_PAUSED
+        value: "false"

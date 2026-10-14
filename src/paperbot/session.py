@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from .binance_data import INTERVAL_MS
 from .models import Candle, Side
 from .paper import PaperBroker
+from .models import Position, Trade
+from .risk import RiskConfig, RiskManager
 from .strategy import BreakRetestStrategy, EmaCrossStrategy
 
 
@@ -72,6 +74,132 @@ class PaperTradingSession:
         self.trades: list[dict] = []
         self.events: list[dict] = []
         self.paused_reason: str | None = None
+
+    def to_dict(self) -> dict:
+        """Return a JSON-safe snapshot sufficient to resume without duplicate candles."""
+        position = self.broker.position
+        config = self.broker.risk.config
+        return {
+            "schema_version": 1,
+            "symbol": self.symbol,
+            "interval": self.interval,
+            "market_source": self.market_source,
+            "starting_balance": self.starting_balance,
+            "strategy_name": self.strategy_name,
+            "fast_period": getattr(self.strategy, "fast_period", 5),
+            "slow_period": getattr(self.strategy, "slow_period", 12),
+            "last_timestamp": self.last_timestamp,
+            "history": [
+                [c.timestamp, c.open, c.high, c.low, c.close, c.volume]
+                for c in self.history
+            ],
+            "pending_signal": self.pending_signal.value if self.pending_signal else None,
+            "session_day": self.session_day.isoformat(),
+            "session_start_equity": self.session_start_equity,
+            "daily_halted": self.daily_halted,
+            "entry_timestamp": self.entry_timestamp,
+            "paused_reason": self.paused_reason,
+            "risk_config": {
+                "risk_per_trade": config.risk_per_trade,
+                "stop_loss_pct": config.stop_loss_pct,
+                "reward_risk": config.reward_risk,
+                "max_leverage": config.max_leverage,
+                "fee_rate": config.fee_rate,
+                "max_daily_loss_pct": config.max_daily_loss_pct,
+                "slippage_rate": config.slippage_rate,
+                "funding_rate_per_8h": config.funding_rate_per_8h,
+            },
+            "broker": {
+                "balance": self.broker.balance,
+                "position": None if position is None else {
+                    "side": position.side.value,
+                    "quantity": position.quantity,
+                    "entry_price": position.entry_price,
+                    "stop_price": position.stop_price,
+                    "take_profit_price": position.take_profit_price,
+                    "entry_fee": position.entry_fee,
+                    "funding_cost": position.funding_cost,
+                },
+                "trades": [
+                    {
+                        "side": trade.side.value,
+                        "entry_price": trade.entry_price,
+                        "exit_price": trade.exit_price,
+                        "quantity": trade.quantity,
+                        "pnl": trade.pnl,
+                        "fees": trade.fees,
+                        "reason": trade.reason,
+                        "funding_cost": trade.funding_cost,
+                    }
+                    for trade in self.broker.trades
+                ],
+            },
+            "trades": self.trades,
+            "events": self.events,
+        }
+
+    @classmethod
+    def from_dict(cls, state: dict) -> "PaperTradingSession":
+        """Restore a validated session snapshot written by to_dict."""
+        if not isinstance(state, dict) or state.get("schema_version") != 1:
+            raise ValueError("Unsupported or malformed paper-session snapshot")
+        raw_history = state.get("history")
+        if not isinstance(raw_history, list) or not raw_history:
+            raise ValueError("Paper-session snapshot has no candle history")
+        history = [Candle(*row) for row in raw_history]
+        session = cls(
+            symbol=state["symbol"],
+            interval=state["interval"],
+            market_source=state["market_source"],
+            starting_balance=float(state["starting_balance"]),
+            strategy_name=state["strategy_name"],
+            fast_period=int(state.get("fast_period", 5)),
+            slow_period=int(state.get("slow_period", 12)),
+            initial_candles=history,
+        )
+        if history[-1].timestamp != int(state["last_timestamp"]):
+            raise ValueError("Snapshot last timestamp does not match its candle history")
+        risk_config = RiskConfig(**state.get("risk_config", {}))
+        session.broker.risk = RiskManager(risk_config)
+        broker_state = state.get("broker")
+        if not isinstance(broker_state, dict):
+            raise ValueError("Snapshot has no broker state")
+        session.broker.balance = float(broker_state["balance"])
+        raw_position = broker_state.get("position")
+        session.broker.position = (
+            None if raw_position is None else Position(
+                side=Side(raw_position["side"]),
+                quantity=float(raw_position["quantity"]),
+                entry_price=float(raw_position["entry_price"]),
+                stop_price=float(raw_position["stop_price"]),
+                take_profit_price=float(raw_position["take_profit_price"]),
+                entry_fee=float(raw_position.get("entry_fee", 0.0)),
+                funding_cost=float(raw_position.get("funding_cost", 0.0)),
+            )
+        )
+        session.broker.trades = [
+            Trade(
+                side=Side(item["side"]),
+                entry_price=float(item["entry_price"]),
+                exit_price=float(item["exit_price"]),
+                quantity=float(item["quantity"]),
+                pnl=float(item["pnl"]),
+                fees=float(item["fees"]),
+                reason=item["reason"],
+                funding_cost=float(item.get("funding_cost", 0.0)),
+            )
+            for item in broker_state.get("trades", [])
+        ]
+        raw_signal = state.get("pending_signal")
+        session.pending_signal = Side(raw_signal) if raw_signal else None
+        session.session_day = datetime.fromisoformat(state["session_day"]).date()
+        session.session_start_equity = float(state["session_start_equity"])
+        session.daily_halted = bool(state["daily_halted"])
+        session.entry_timestamp = state.get("entry_timestamp")
+        session.paused_reason = state.get("paused_reason")
+        session.trades = list(state.get("trades", []))
+        session.events = list(state.get("events", []))
+        return session
 
     def _record_trade(self, trade, exit_timestamp: int) -> None:
         if trade is None:
