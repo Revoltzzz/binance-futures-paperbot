@@ -73,6 +73,11 @@ def main() -> None:
     print(f"Return:            {result.total_return_pct:.2f}%")
     print(f"Trades: {result.trades} | wins: {result.wins} | losses: {result.losses}")
     print(f"Max drawdown:      {result.max_drawdown_pct:.2f}%")
+    print(f"Net expectancy/trade: {result.expectancy_per_trade:.4f}")
+    if result.profit_factor is None:
+        print("Profit factor:     n/a (no losing trades in this sample)")
+    else:
+        print(f"Profit factor:     {result.profit_factor:.3f}")
 
 
 if __name__ == "__main__":
