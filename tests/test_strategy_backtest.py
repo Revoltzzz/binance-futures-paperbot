@@ -179,10 +179,11 @@ def test_backtest_applies_historical_funding_at_nonstandard_event_timestamp():
 
     # A non-8-hour event proves historical mode follows the supplied venue schedule.
     event_ms = 1_800_000_000_000 + 2 * 60 * 60 * 1000
+    # Event lands between the second and third candle opens.
     candles = [
         Candle(event_ms - 600_000, 100, 100.5, 99.5, 100),
         Candle(event_ms - 300_000, 100, 100.5, 99.5, 100),
-        Candle(event_ms, 100, 100.5, 99.5, 100),
+        Candle(event_ms + 300_000, 100, 100.5, 99.5, 100),
     ]
     result = run_backtest(
         candles,
