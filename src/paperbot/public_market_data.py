@@ -66,7 +66,9 @@ def load_okx_funding_rates(symbol: str = "BTCUSDT", limit: int = 100, *,
                 raise MarketDataError("Malformed OKX funding-rate row")
             try:
                 timestamp = int(row["fundingTime"])
-                rate = float(row["fundingRate"])
+                # Prefer the realized settlement rate when OKX provides it.
+                rate_value = row.get("realizedRate") or row["fundingRate"]
+                rate = float(rate_value)
             except (KeyError, TypeError, ValueError, OverflowError) as exc:
                 raise MarketDataError("Invalid OKX funding-rate row") from exc
             import math
