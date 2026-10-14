@@ -10,11 +10,14 @@ class RiskConfig:
     max_leverage: float = 2.0
     fee_rate: float = 0.0004
     max_daily_loss_pct: float = 0.03
+    slippage_rate: float = 0.0002
+    funding_rate_per_8h: float = 0.0001
 
     def __post_init__(self):
         values = (
             self.risk_per_trade, self.stop_loss_pct, self.reward_risk,
             self.max_leverage, self.fee_rate, self.max_daily_loss_pct,
+            self.slippage_rate, self.funding_rate_per_8h,
         )
         if not all(math.isfinite(value) for value in values):
             raise ValueError("risk settings must be finite numbers")
@@ -28,6 +31,10 @@ class RiskConfig:
             raise ValueError("fee_rate must be in [0, 0.1)")
         if not 0 < self.max_daily_loss_pct < 1:
             raise ValueError("max_daily_loss_pct must be in (0, 1)")
+        if not 0 <= self.slippage_rate < 0.1:
+            raise ValueError("slippage_rate must be in [0, 0.1)")
+        if not -0.1 < self.funding_rate_per_8h < 0.1:
+            raise ValueError("funding_rate_per_8h must be between -0.1 and 0.1")
 
 
 class RiskManager:
@@ -44,7 +51,10 @@ class RiskManager:
             return 0.0
         risk_budget = equity * self.config.risk_per_trade
         # Budget for stop-distance loss plus estimated entry and stop-exit fees.
-        estimated_round_trip_cost_per_unit = entry * self.config.fee_rate + stop * self.config.fee_rate
+        estimated_round_trip_cost_per_unit = (
+            entry * (self.config.fee_rate + self.config.slippage_rate)
+            + stop * (self.config.fee_rate + self.config.slippage_rate)
+        )
         qty_by_risk = risk_budget / (distance + estimated_round_trip_cost_per_unit)
         qty_by_leverage = equity * self.config.max_leverage / entry
         return max(0.0, min(qty_by_risk, qty_by_leverage))
