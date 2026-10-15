@@ -5,6 +5,7 @@ from .backtest import run_backtest
 from .binance_data import MarketDataError, load_binance_klines
 from .data import demo_candles, load_csv
 from .news import NewsError, fetch_latest_news, print_news, watch_news
+from .optimizer import optimize_chronologically
 from .public_market_data import load_okx_funding_rates, load_okx_swap_klines
 from .risk import RiskConfig
 from .strategy import BreakRetestStrategy, EmaCrossStrategy
@@ -38,6 +39,8 @@ def main() -> None:
                                  help="evaluate both fixed strategies across sequential unseen windows")
     evaluation_mode.add_argument("--cost-sensitivity", action="store_true",
                                  help="compare both fixed strategies on the final 30% holdout at 1x, 1.5x and 2x modeled costs")
+    evaluation_mode.add_argument("--optimize-validate-test", action="store_true",
+                                 help="select from a small fixed candidate grid on validation data, then evaluate only the selected candidate on an untouched final test window")
     parser.add_argument("--walk-forward-folds", type=int, default=3,
                         help="number of sequential holdout folds for --walk-forward (2-10)")
     parser.add_argument("--balance", type=float, default=100.0, help="starting paper balance")
@@ -72,7 +75,13 @@ def main() -> None:
         comparison_results = None
         walk_forward_results = None
         cost_sensitivity_results = None
-        if args.cost_sensitivity:
+        optimization_report = None
+        if args.optimize_validate_test:
+            optimization_report = optimize_chronologically(
+                candles, starting_balance=args.balance, funding_rates=funding_rates
+            )
+            result = None
+        elif args.cost_sensitivity:
             split_index = int(len(candles) * 0.7)
             if split_index < 20 or len(candles) - split_index < 2:
                 raise ValueError("cost sensitivity needs at least 20 warmup candles and 2 holdout candles")
@@ -157,6 +166,36 @@ def main() -> None:
     if args.okx:
         print("Funding: historical OKX rates; exchange-specific, not Binance funding rates")
     print(f"Candles: {len(candles)}")
+    if optimization_report is not None:
+        report = optimization_report
+        print(
+            f"Chronological optimization: train={report.train_candles}, "
+            f"validation={report.validation_candles}, untouched_test={report.test_candles} candles"
+        )
+        print("Candidates are ranked only on validation net return penalized by drawdown; minimum 5 closed trades.")
+        for candidate in report.candidates:
+            val = candidate.validation
+            pf = "n/a" if val.profit_factor is None else f"{val.profit_factor:.3f}"
+            marker = "SELECTED" if candidate.name == report.selected_name else ("ineligible" if not candidate.eligible else "not selected")
+            print(
+                f"{marker:12} {candidate.name:22} validation_return={val.total_return_pct:8.2f}% "
+                f"maxDD={val.max_drawdown_pct:7.2f}% trades={val.trades:4d} "
+                f"profitFactor={pf:>7} expectancy={val.expectancy_per_trade:9.4f}"
+            )
+        if report.selected_name is None or report.selected_test is None:
+            print("No candidate met the minimum validation trade count; no candidate was selected.")
+        else:
+            test = report.selected_test
+            pf = "n/a" if test.profit_factor is None else f"{test.profit_factor:.3f}"
+            print("UNTOUCHED FINAL TEST — only the validation-selected candidate was evaluated here:")
+            print(
+                f"{report.selected_name} return={test.total_return_pct:.2f}% "
+                f"maxDD={test.max_drawdown_pct:.2f}% trades={test.trades} "
+                f"profitFactor={pf} expectancy={test.expectancy_per_trade:.4f}"
+            )
+        print("Research only: this does not change the worker strategy or unpause the paper session.")
+        print("A single holdout is not proof of future profitability; verify on more symbols, periods, and cost assumptions.")
+        return
     if cost_sensitivity_results is not None:
         print(f"Cost sensitivity: final {len(candles) - int(len(candles) * 0.7)} candles holdout; prior candles are warm-up only")
         print("Costs scaled together: commission, adverse slippage, and funding; strategy parameters stay fixed.")

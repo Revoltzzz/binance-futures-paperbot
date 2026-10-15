@@ -165,3 +165,17 @@ paperbot --csv path/to/BTCUSDT_15m.csv --walk-forward --walk-forward-folds 3
 
 This uses the first half of the series for warm-up, then evaluates both fixed strategies across the following sequential folds. Each fold resets the paper balance, and the strategy parameters are not optimized. It is a stability check rather than a fully optimized walk-forward system; use longer historical CSV data and inspect whether results are consistent across folds before drawing conclusions.
 
+
+
+### Validation-selected strategy research (no live auto-promotion)
+
+For a small, predeclared candidate grid, run a chronological validation-selection and untouched-test evaluation:
+
+```bash
+paperbot --okx --symbol BTCUSDT --interval 15m --limit 1500 --optimize-validate-test
+paperbot --okx --symbol ETHUSDT --interval 1h --limit 1500 --optimize-validate-test
+```
+
+The command uses the first 50% of candles as indicator warm-up, ranks a small fixed candidate set on the next 25% by validation net return penalized for drawdown, and evaluates only the selected candidate on the final 25%. Candidates with fewer than five closed validation trades are ineligible. The report shows modeled fees/slippage and OKX historical funding when OKX is selected. Use sufficiently long data, multiple symbols/timeframes and cost-sensitivity checks; this is a research aid, not proof of an edge.
+
+The final test period is not scored for rejected candidates, reducing the temptation to choose a strategy based on test results. **This command does not modify the worker strategy, clear a safety pause, or enable live orders.** A candidate should not be promoted unless performance is stable across several new periods after realistic costs and funding.
