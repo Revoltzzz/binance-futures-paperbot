@@ -91,6 +91,61 @@ def test_worker_refuses_spot_proxy(tmp_path, monkeypatch):
         raise AssertionError("worker must refuse spot-proxy market data")
     assert store.load("BTCUSDT:5m") is None
 
+
+def test_worker_allows_explicit_perpetual_futures_fallback_for_paper_research(tmp_path, monkeypatch):
+    start = 1_800_000_000_000
+    candles = _candles(start, 2)
+    clock = {"now_ms": start + 300_000 + 60_000}
+
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            return datetime.fromtimestamp(clock["now_ms"] / 1000, tz=timezone.utc)
+
+    monkeypatch.setattr(worker, "datetime", Clock)
+    seen = {}
+    def load(**kwargs):
+        seen.update(kwargs)
+        return list(candles), "Bybit USDT linear perpetual (fallback)"
+    monkeypatch.setattr(worker, "load_public_klines", load)
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+
+    message = worker.run_cycle(
+        store, symbol="BTCUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema", market_data_mode="derivatives-fallback",
+    )
+    assert "Initialized" in message
+    assert seen["binance_only"] is False
+    loaded = store.load("BTCUSDT:5m")
+    assert loaded is not None
+    assert loaded[1]["market_source"] == "Bybit USDT linear perpetual (fallback)"
+
+
+def test_derivatives_fallback_mode_still_refuses_spot_data(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        worker,
+        "load_public_klines",
+        lambda **kwargs: (_candles(1_800_000_000_000, 2), "Kraken spot proxy (NOT futures data)"),
+    )
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    import pytest
+    with pytest.raises(worker.MarketDataError, match="Spot-proxy data is never accepted"):
+        worker.run_cycle(
+            store, symbol="BTCUSDT", interval="5m", starting_balance=1000,
+            strategy_name="ema", market_data_mode="derivatives-fallback",
+        )
+    assert store.load("BTCUSDT:5m") is None
+
+
+def test_worker_rejects_unknown_market_data_mode(tmp_path):
+    import pytest
+    with pytest.raises(ValueError, match="market_data_mode"):
+        worker.run_cycle(
+            SQLitePaperStore(tmp_path / "paper.sqlite"),
+            symbol="BTCUSDT", interval="5m", starting_balance=1000,
+            strategy_name="ema", market_data_mode="anything-goes",
+        )
+
 def test_error_backoff_grows_exponentially_and_is_capped():
     assert worker._error_backoff_seconds(60, 0) == 60
     assert worker._error_backoff_seconds(60, 1) == 120
