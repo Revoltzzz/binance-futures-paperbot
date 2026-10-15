@@ -137,3 +137,26 @@ def test_long_rate_limit_delay_defers_to_next_worker_poll(tmp_path):
                             sleep=sleeps.append)
     assert len(calls) == 1
     assert sleeps == []
+
+
+
+def test_http_error_body_is_included_in_bounded_diagnostics(tmp_path):
+    from io import BytesIO
+
+    error = HTTPError(
+        "https://fapi.binance.com/fapi/v1/klines",
+        451,
+        "Unavailable For Legal Reasons",
+        Message(),
+        BytesIO(b'{"code":0,"msg":"Access restricted in this region"}'),
+    )
+
+    with pytest.raises(MarketDataError) as exc:
+        load_binance_klines(
+            cache_dir=tmp_path,
+            retries=0,
+            fetcher=lambda _: (_ for _ in ()).throw(error),
+            sleep=lambda _: None,
+        )
+    assert "451" in str(exc.value)
+    assert "Access restricted in this region" in str(exc.value)
