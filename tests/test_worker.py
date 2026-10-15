@@ -90,3 +90,19 @@ def test_worker_refuses_spot_proxy(tmp_path, monkeypatch):
     else:
         raise AssertionError("worker must refuse spot-proxy market data")
     assert store.load("BTCUSDT:5m") is None
+
+def test_error_backoff_grows_exponentially_and_is_capped():
+    assert worker._error_backoff_seconds(60, 0) == 60
+    assert worker._error_backoff_seconds(60, 1) == 120
+    assert worker._error_backoff_seconds(60, 2) == 240
+    assert worker._error_backoff_seconds(60, 10) == 900
+    assert worker._error_backoff_seconds(60, 20, 3600) == 3600
+
+
+def test_error_backoff_rejects_invalid_inputs():
+    import pytest
+
+    with pytest.raises(ValueError):
+        worker._error_backoff_seconds(0, 1)
+    with pytest.raises(ValueError):
+        worker._error_backoff_seconds(60, -1)

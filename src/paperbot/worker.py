@@ -25,6 +25,15 @@ def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     return value
 
 
+def _error_backoff_seconds(poll_seconds: int, consecutive_failures: int,
+                          maximum_seconds: int = 900) -> int:
+    """Bound retry frequency during persistent market-data or state failures."""
+    if poll_seconds < 1 or consecutive_failures < 0 or maximum_seconds < 1:
+        raise ValueError("backoff inputs must be positive (failure count may be zero)")
+    multiplier = 2 ** min(consecutive_failures, 10)
+    return min(poll_seconds * multiplier, maximum_seconds)
+
+
 def _session_id(symbol: str, interval: str) -> str:
     return f"{symbol.upper()}:{interval}"
 
@@ -123,12 +132,15 @@ def main() -> None:
     if strategy_name not in {"ema", "break-retest"}:
         raise SystemExit("PAPERBOT_STRATEGY must be ema or break-retest")
     poll_seconds = _env_int("PAPERBOT_POLL_SECONDS", 60, 15, 3600)
+    max_error_backoff = _env_int("PAPERBOT_MAX_ERROR_BACKOFF_SECONDS", 900, 60, 3600)
     database_path = os.getenv("PAPERBOT_DB_PATH", "/var/data/paperbot.sqlite")
     store = SQLitePaperStore(database_path)
     LOG.info("Starting paper-only worker: %s %s strategy=%s poll=%ss",
              symbol, interval, strategy_name, poll_seconds)
     LOG.warning("No live-order adapter is configured; this process only simulates trades.")
+    consecutive_failures = 0
     while True:
+        sleep_seconds = poll_seconds
         if os.getenv("PAPERBOT_PAUSED", "false").strip().lower() in {"1", "true", "yes", "on"}:
             LOG.warning("Kill switch enabled; skipping market processing.")
         else:
@@ -138,13 +150,32 @@ def main() -> None:
                     store, symbol=symbol, interval=interval,
                     starting_balance=starting_balance, strategy_name=strategy_name,
                 ))
+                if consecutive_failures:
+                    LOG.info("Paper worker recovered after %d consecutive failed cycle(s).",
+                             consecutive_failures)
+                consecutive_failures = 0
             except SessionConflict as exc:
+                consecutive_failures += 1
                 LOG.error("Concurrent worker conflict; no overwrite occurred: %s", exc)
+                sleep_seconds = _error_backoff_seconds(
+                    poll_seconds, consecutive_failures, max_error_backoff
+                )
             except (MarketDataError, OSError, ValueError) as exc:
+                consecutive_failures += 1
                 LOG.error("Cycle failed safely; account was not updated: %s", exc)
+                sleep_seconds = _error_backoff_seconds(
+                    poll_seconds, consecutive_failures, max_error_backoff
+                )
             except Exception:
+                consecutive_failures += 1
                 LOG.exception("Unexpected cycle failure; investigate before trusting this paper session.")
-        time.sleep(poll_seconds)
+                sleep_seconds = _error_backoff_seconds(
+                    poll_seconds, consecutive_failures, max_error_backoff
+                )
+        if sleep_seconds > poll_seconds:
+            LOG.warning("Backing off for %d seconds after %d consecutive failed cycle(s).",
+                        sleep_seconds, consecutive_failures)
+        time.sleep(sleep_seconds)
 
 
 if __name__ == "__main__":
