@@ -64,7 +64,7 @@ with st.sidebar:
     interval = st.selectbox("Candle interval", ["5m", "15m", "1h"], index=0)
     limit = st.slider("Historical candles", min_value=100, max_value=1000, value=500, step=50)
     starting_balance = st.number_input("Starting paper balance (USDT)", min_value=100.0,
-                                       max_value=10000.0, value=1000.0, step=100.0)
+                                       max_value=10000.0, value=100.0, step=25.0)
     fast_period = st.slider("Fast EMA", min_value=2, max_value=10, value=5)
     slow_period = st.slider("Slow EMA", min_value=11, max_value=40, value=12)
     news_limit = st.slider("Headlines to show", min_value=5, max_value=30, value=15)
