@@ -352,3 +352,42 @@ def test_backtest_drawdown_uses_intrabar_adverse_price_not_close_only():
     # Intrabar drawdown should capture the dip even though the candle closes higher.
     assert result.max_drawdown_pct > 0.5
 
+
+
+def test_backtest_accepts_custom_cost_configuration():
+    from paperbot.risk import RiskConfig
+
+    class FirstCandleLong:
+        def signal(self, history):
+            return Side.LONG if len(history) == 1 else None
+
+    start = 1_800_000_000_000
+    candles = [
+        Candle(start, 100, 100.5, 99.5, 100),
+        Candle(start + 300_000, 102, 102.5, 101.5, 102),
+        Candle(start + 600_000, 103, 103.5, 102.5, 103),
+    ]
+    baseline = run_backtest(candles, strategy=FirstCandleLong())
+    stressed = run_backtest(
+        candles,
+        strategy=FirstCandleLong(),
+        risk_config=RiskConfig(fee_rate=0.0008, slippage_rate=0.0004),
+    )
+    assert stressed.trade_history[0].fees > baseline.trade_history[0].fees
+    assert stressed.ending_balance < baseline.ending_balance
+
+
+def test_cli_cost_sensitivity_reports_three_cost_scenarios(monkeypatch, capsys):
+    import sys
+    from paperbot.cli import main
+
+    monkeypatch.setattr(
+        sys, "argv", ["paperbot", "--candles", "200", "--cost-sensitivity"]
+    )
+    main()
+    output = capsys.readouterr().out
+    assert "Cost sensitivity:" in output
+    assert "1.0x costs" in output
+    assert "1.5x costs" in output
+    assert "2.0x costs" in output
+    assert "no strategy is automatically selected" in output
