@@ -7,6 +7,7 @@ browser session and is not durable across server restarts.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
 
 from .binance_data import INTERVAL_MS
 from .models import Candle, Side
@@ -147,6 +148,13 @@ class PaperTradingSession:
         if not isinstance(raw_history, list) or not raw_history:
             raise ValueError("Paper-session snapshot has no candle history")
         history = [Candle(*row) for row in raw_history]
+        interval = state.get("interval")
+        if interval not in INTERVAL_MS:
+            raise ValueError("Snapshot has an unsupported candle interval")
+        duration = INTERVAL_MS[interval]
+        for previous, current in zip(history, history[1:]):
+            if current.timestamp - previous.timestamp != duration:
+                raise ValueError("Snapshot candle history is gapped, duplicated, or out of order")
         session = cls(
             symbol=state["symbol"],
             interval=state["interval"],
@@ -164,19 +172,47 @@ class PaperTradingSession:
         broker_state = state.get("broker")
         if not isinstance(broker_state, dict):
             raise ValueError("Snapshot has no broker state")
-        session.broker.balance = float(broker_state["balance"])
+        try:
+            restored_balance = float(broker_state["balance"])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("Snapshot broker balance is invalid") from exc
+        if not math.isfinite(restored_balance):
+            raise ValueError("Snapshot broker balance must be finite")
+        session.broker.balance = restored_balance
         raw_position = broker_state.get("position")
-        session.broker.position = (
-            None if raw_position is None else Position(
-                side=Side(raw_position["side"]),
-                quantity=float(raw_position["quantity"]),
-                entry_price=float(raw_position["entry_price"]),
-                stop_price=float(raw_position["stop_price"]),
-                take_profit_price=float(raw_position["take_profit_price"]),
-                entry_fee=float(raw_position.get("entry_fee", 0.0)),
-                funding_cost=float(raw_position.get("funding_cost", 0.0)),
-            )
-        )
+        if raw_position is None:
+            session.broker.position = None
+        else:
+            try:
+                position_values = {
+                    "quantity": float(raw_position["quantity"]),
+                    "entry_price": float(raw_position["entry_price"]),
+                    "stop_price": float(raw_position["stop_price"]),
+                    "take_profit_price": float(raw_position["take_profit_price"]),
+                    "entry_fee": float(raw_position.get("entry_fee", 0.0)),
+                    "funding_cost": float(raw_position.get("funding_cost", 0.0)),
+                }
+                side = Side(raw_position["side"])
+            except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("Snapshot position is malformed") from exc
+            if not all(math.isfinite(value) for value in position_values.values()):
+                raise ValueError("Snapshot position values must be finite")
+            if any(position_values[key] <= 0 for key in
+                   ("quantity", "entry_price", "stop_price", "take_profit_price")):
+                raise ValueError("Snapshot position quantities and prices must be positive")
+            if position_values["entry_fee"] < 0:
+                raise ValueError("Snapshot position entry fee cannot be negative")
+            if side == Side.LONG and not (
+                position_values["stop_price"] < position_values["entry_price"] <
+                position_values["take_profit_price"]
+            ):
+                raise ValueError("Snapshot long position stop/target levels are inconsistent")
+            if side == Side.SHORT and not (
+                position_values["take_profit_price"] < position_values["entry_price"] <
+                position_values["stop_price"]
+            ):
+                raise ValueError("Snapshot short position stop/target levels are inconsistent")
+            session.broker.position = Position(side=side, **position_values)
         session.broker.trades = [
             Trade(
                 side=Side(item["side"]),
