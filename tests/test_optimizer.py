@@ -26,3 +26,18 @@ def test_optimizer_refuses_too_little_data():
 def test_optimizer_rejects_invalid_minimum_trade_count():
     with pytest.raises(ValueError, match="min_trades"):
         optimize_chronologically(demo_candles(300), min_trades=0)
+
+
+
+def test_cli_runs_validation_selected_untouched_test_mode(monkeypatch, capsys):
+    import sys
+    from paperbot.cli import main
+
+    monkeypatch.setattr(
+        sys, "argv", ["paperbot", "--candles", "400", "--optimize-validate-test"]
+    )
+    main()
+    output = capsys.readouterr().out
+    assert "Chronological optimization:" in output
+    assert "UNTOUCHED FINAL TEST" in output or "No candidate met the minimum validation trade count" in output
+    assert "does not change the worker strategy" in output
