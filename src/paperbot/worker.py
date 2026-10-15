@@ -180,16 +180,18 @@ def main() -> None:
     database_path = os.getenv("PAPERBOT_DB_PATH", "/var/data/paperbot.sqlite")
     store = SQLitePaperStore(database_path)
     market_data_mode = os.getenv("PAPERBOT_MARKET_DATA_MODE", "binance-only").strip().lower()
-    if market_data_mode not in {"binance-only", "derivatives-fallback"}:
+    if market_data_mode not in {"binance-only", "derivatives-fallback", "okx-only"}:
         raise SystemExit(
-            "PAPERBOT_MARKET_DATA_MODE must be binance-only or derivatives-fallback"
+            "PAPERBOT_MARKET_DATA_MODE must be binance-only, derivatives-fallback, or okx-only"
         )
     LOG.info("Starting paper-only worker: %s %s strategy=%s data_mode=%s poll=%ss",
              symbol, interval, strategy_name, market_data_mode, poll_seconds)
-    if market_data_mode == "derivatives-fallback":
+    if market_data_mode in {"derivatives-fallback", "okx-only"}:
         LOG.warning(
             "Using alternate derivatives data for paper research only; results are not Binance-specific."
         )
+    if market_data_mode == "okx-only":
+        LOG.info("OKX-only mode avoids Binance/Bybit requests; public OKX USDT perpetual swaps are the sole market-data source.")
     LOG.warning("No live-order adapter is configured; this process only simulates trades.")
     consecutive_failures = 0
     while True:
