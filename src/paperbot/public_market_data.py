@@ -254,8 +254,8 @@ def load_public_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: int
     okx_loader: Callable[..., list[Candle]] | None = None,
     kraken_loader: Callable[..., list[Candle]] | None = None,
     diagnostics: list[str] | None = None,
-    binance_only: bool = False) -> tuple[list[Candle], str]:
-    """Try public candle providers; optionally restrict requests to Binance only."""
+    binance_only: bool = False, okx_only: bool = False) -> tuple[list[Candle], str]:
+    """Try public candle providers, or explicitly restrict requests to one derivatives venue."""
 
     from .binance_data import load_binance_klines
     errors: list[str] = []
@@ -272,8 +272,12 @@ def load_public_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: int
     ]
     # The persistent worker must not hit other exchanges when its Binance-only
     # account is configured. Dashboard/research callers retain the default fallback chain.
+    if binance_only and okx_only:
+        raise ValueError("binance_only and okx_only cannot both be true")
     if binance_only:
         providers = providers[:1]
+    elif okx_only:
+        providers = providers[2:3]
     for label, cache_provider, get_data in providers:
         try:
             candles = _validate_provider_candles(get_data(), interval, label)
