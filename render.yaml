@@ -25,4 +25,4 @@ services:
       - key: PAPERBOT_PAUSED
         value: "false"
       - key: PAPERBOT_MARKET_DATA_MODE
-        value: derivatives-fallback
+        value: okx-only
