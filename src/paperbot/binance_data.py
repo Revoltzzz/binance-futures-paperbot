@@ -78,7 +78,7 @@ def _request_with_retries(url: str, fetcher: JsonFetcher, retries: int,
             if attempt < retries:
                 sleep(min(0.5 * (2 ** attempt), 4.0))
     raise MarketDataError(
-        f"Public market-data request failed after {attempts or retries + 1} attempt(s): {last_error}"
+        f"Public market-data request failed after {attempts or retries + 1} attempts: {last_error}"
     ) from last_error
 
 
