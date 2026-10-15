@@ -52,8 +52,8 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
               starting_balance: float, strategy_name: str, history_limit: int = 500,
               market_data_mode: str = "binance-only") -> str:
     """Run one safe cycle and atomically persist it; never places exchange orders."""
-    if market_data_mode not in {"binance-only", "derivatives-fallback"}:
-        raise ValueError("market_data_mode must be binance-only or derivatives-fallback")
+    if market_data_mode not in {"binance-only", "derivatives-fallback", "okx-only"}:
+        raise ValueError("market_data_mode must be binance-only, derivatives-fallback, or okx-only")
     loaded = store.load(_session_id(symbol, interval))
     diagnostics: list[str] = []
     LOG.info("Fetching public futures candles: symbol=%s interval=%s limit=%d mode=%s",
@@ -63,6 +63,7 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
         cache_dir=os.getenv("PAPERBOT_CACHE_DIR", ".cache/worker"),
         diagnostics=diagnostics,
         binance_only=(market_data_mode == "binance-only"),
+        okx_only=(market_data_mode == "okx-only"),
     )
     for detail in diagnostics:
         LOG.warning("Market-data provider failed: %s", detail)
@@ -77,8 +78,10 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
             "Bybit USDT linear perpetual (fallback)",
             "OKX USDT perpetual swap (fallback)",
         )
+    elif market_data_mode == "okx-only":
+        allowed_sources = ("OKX USDT perpetual swap (fallback)",)
     if not market_source.startswith(allowed_sources):
-        mode_label = "Binance-only" if market_data_mode == "binance-only" else "derivatives-fallback"
+        mode_label = {"binance-only": "Binance-only", "derivatives-fallback": "derivatives-fallback", "okx-only": "OKX-only"}[market_data_mode]
         raise MarketDataError(
             f"{mode_label} paper mode: refusing unsupported market data "
             f"from {market_source}. spot-proxy data is never accepted; no account state was updated."
