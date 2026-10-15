@@ -341,3 +341,38 @@ def test_binance_only_mode_does_not_attempt_fallback_providers(tmp_path):
 
     assert calls["binance"] == 1
 
+
+
+
+def test_okx_only_mode_never_attempts_binance_or_other_fallbacks(tmp_path):
+    calls = {"okx": 0}
+
+    def forbidden(**kwargs):
+        pytest.fail("OKX-only mode must not contact another provider")
+
+    def okx(**kwargs):
+        calls["okx"] += 1
+        return [
+            Candle(300000, 100, 101, 99, 100),
+            Candle(600000, 100, 101, 99, 100),
+        ]
+
+    candles, source = load_public_klines(
+        symbol="BTCUSDT",
+        interval="5m",
+        limit=2,
+        cache_dir=tmp_path,
+        binance_loader=forbidden,
+        bybit_loader=forbidden,
+        okx_loader=okx,
+        kraken_loader=forbidden,
+        okx_only=True,
+    )
+    assert calls["okx"] == 1
+    assert len(candles) == 2
+    assert source == "OKX USDT perpetual swap (fallback)"
+
+
+def test_provider_loader_rejects_conflicting_single_provider_modes():
+    with pytest.raises(ValueError, match="cannot both be true"):
+        load_public_klines(binance_only=True, okx_only=True)
