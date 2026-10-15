@@ -20,7 +20,7 @@ def test_optimizer_selects_on_validation_and_tests_only_selected_candidate():
 
 def test_optimizer_refuses_too_little_data():
     with pytest.raises(ValueError, match="at least 50 train candles"):
-        optimize_chronologically(demo_candles(100))
+        optimize_chronologically(demo_candles(80))
 
 
 def test_optimizer_rejects_invalid_minimum_trade_count():
