@@ -78,8 +78,9 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
             "OKX USDT perpetual swap (fallback)",
         )
     if not market_source.startswith(allowed_sources):
+        mode_label = "Binance-only" if market_data_mode == "binance-only" else "derivatives-fallback"
         raise MarketDataError(
-            f"{market_data_mode} paper mode: refusing unsupported market data "
+            f"{mode_label} paper mode: refusing unsupported market data "
             f"from {market_source}. spot-proxy data is never accepted; no account state was updated."
         )
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
