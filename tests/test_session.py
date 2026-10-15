@@ -66,3 +66,44 @@ def test_session_pauses_if_market_data_provider_changes():
     assert session.process_new_candles(initial, "Bybit USDT linear perpetual") == 0
     assert session.paused_reason is not None
     assert "provider changed" in session.paused_reason.lower()
+
+def test_restore_rejects_gapped_candle_history():
+    import pytest
+
+    session = _session(_candles(3))
+    state = session.to_dict()
+    state["history"][1][0] += 300_000
+
+    with pytest.raises(ValueError, match="history is gapped"):
+        PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_non_finite_broker_balance():
+    import pytest
+
+    session = _session()
+    state = session.to_dict()
+    state["broker"]["balance"] = float("nan")
+
+    with pytest.raises(ValueError, match="balance must be finite"):
+        PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_inconsistent_open_position():
+    import pytest
+
+    session = _session()
+    state = session.to_dict()
+    state["broker"]["position"] = {
+        "side": "long",
+        "quantity": 1.0,
+        "entry_price": 100.0,
+        "stop_price": 101.0,
+        "take_profit_price": 102.0,
+        "entry_fee": 0.1,
+        "funding_cost": 0.0,
+    }
+
+    with pytest.raises(ValueError, match="long position stop/target"):
+        PaperTradingSession.from_dict(state)
+
