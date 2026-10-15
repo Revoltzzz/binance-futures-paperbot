@@ -40,15 +40,46 @@ def _fetch_json(url: str, timeout: float = 10.0) -> object:
 
 def _request_with_retries(url: str, fetcher: JsonFetcher, retries: int,
                           sleep: Callable[[float], None]) -> object:
+    """Retry transient failures, but fail fast on permanent HTTP errors.
+
+    Binance rate limits (429) may provide Retry-After in seconds. We honor
+    short delays; for long delays, fail this cycle and let the worker's normal
+    polling schedule retry rather than blocking a worker for minutes.
+    """
     last_error: Exception | None = None
+    attempts = 0
     for attempt in range(retries + 1):
         try:
             return fetcher(url)
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
+        except HTTPError as exc:
             last_error = exc
+            attempts = attempt + 1
+            # Invalid requests, access restrictions and IP bans will not be
+            # fixed by retrying the same request. Never attempt to bypass them.
+            if exc.code not in {408, 425, 429} and not 500 <= exc.code <= 599:
+                break
+            if attempt >= retries:
+                break
+            delay = min(0.5 * (2 ** attempt), 4.0)
+            if exc.code == 429:
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                if retry_after:
+                    try:
+                        requested_delay = max(0.0, float(retry_after))
+                    except (TypeError, ValueError):
+                        requested_delay = delay
+                    if requested_delay > 60:
+                        break
+                    delay = requested_delay
+            sleep(delay)
+        except (URLError, TimeoutError, OSError, ValueError) as exc:
+            last_error = exc
+            attempts = attempt + 1
             if attempt < retries:
                 sleep(min(0.5 * (2 ** attempt), 4.0))
-    raise MarketDataError(f"Public market-data request failed after {retries + 1} attempts: {last_error}") from last_error
+    raise MarketDataError(
+        f"Public market-data request failed after {attempts or retries + 1} attempt(s): {last_error}"
+    ) from last_error
 
 
 def parse_klines(payload: object, interval: str, now_ms: int | None = None) -> list[Candle]:
