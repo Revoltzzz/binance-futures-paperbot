@@ -52,7 +52,21 @@ def _request_with_retries(url: str, fetcher: JsonFetcher, retries: int,
         try:
             return fetcher(url)
         except HTTPError as exc:
-            last_error = exc
+            detail = ""
+            try:
+                # Keep enough of the provider response to diagnose policy or
+                # gateway blocks, without allowing an unbounded error payload
+                # into worker logs.
+                raw_body = exc.read(1024)
+                if raw_body:
+                    detail = raw_body.decode("utf-8", errors="replace").strip()
+                    detail = " ".join(detail.split())[:500]
+            except (OSError, ValueError):
+                detail = ""
+            last_error = RuntimeError(
+                f"HTTP Error {exc.code} {exc.reason}"
+                + (f": {detail}" if detail else "")
+            )
             attempts = attempt + 1
             # Invalid requests, access restrictions and IP bans will not be
             # fixed by retrying the same request. Never attempt to bypass them.
