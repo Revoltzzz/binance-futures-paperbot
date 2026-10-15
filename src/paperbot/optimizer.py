@@ -20,7 +20,7 @@ class Candidate:
 class CandidateScore:
     name: str
     validation: BacktestResult
-    test: BacktestResult
+    test: BacktestResult | None
     eligible: bool
 
 
@@ -62,6 +62,7 @@ def optimize_chronologically(
     candles: list[Candle],
     starting_balance: float = 100.0,
     min_trades: int = 5,
+    funding_rates: dict[int, float] | None = None,
 ) -> OptimizationReport:
     """Select from a fixed candidate set using validation, then score untouched test data.
 
@@ -84,32 +85,34 @@ def optimize_chronologically(
     train = candles[:train_end]
     validation = candles[train_end:validation_end]
     test = candles[validation_end:]
-    scored: list[tuple[float, Candidate, BacktestResult, BacktestResult]] = []
+    scored: list[tuple[float, Candidate, BacktestResult]] = []
     for candidate in default_candidates():
         # Training is a separate historical score; validation alone drives selection.
         # No validation/test candle is used to fit indicator state or generate past P&L.
-        run_backtest(train, starting_balance, strategy=candidate.strategy)
+        run_backtest(train, starting_balance, strategy=candidate.strategy, funding_rates=funding_rates)
         validation_result = run_backtest(
-            validation, starting_balance, strategy=candidate.strategy, warmup_candles=train
-        )
-        test_result = run_backtest(
-            test, starting_balance, strategy=candidate.strategy,
-            warmup_candles=candles[:validation_end],
+            validation, starting_balance, strategy=candidate.strategy, warmup_candles=train, funding_rates=funding_rates
         )
         score = _validation_score(validation_result, min_trades)
-        scored.append((score, candidate, validation_result, test_result))
+        scored.append((score, candidate, validation_result))
 
     eligible = [item for item in scored if item[0] != float("-inf")]
     eligible.sort(key=lambda item: (item[0], item[2].expectancy_per_trade), reverse=True)
     selected = eligible[0] if eligible else None
+    # Do not compute or expose test-window scores for rejected candidates: the final
+    # window remains untouched by the selection process.
+    selected_test = run_backtest(
+        test, starting_balance, strategy=selected[1].strategy,
+        warmup_candles=candles[:validation_end], funding_rates=funding_rates,
+    ) if selected else None
     candidate_scores = tuple(
         CandidateScore(
             name=candidate.name,
             validation=validation_result,
-            test=test_result,
+            test=selected_test if selected and candidate.name == selected[1].name else None,
             eligible=score != float("-inf"),
         )
-        for score, candidate, validation_result, test_result in sorted(
+        for score, candidate, validation_result in sorted(
             scored, key=lambda item: (item[0], item[2].expectancy_per_trade), reverse=True
         )
     )
@@ -119,6 +122,6 @@ def optimize_chronologically(
         test_candles=len(test),
         selected_name=selected[1].name if selected else None,
         selected_validation=selected[2] if selected else None,
-        selected_test=selected[3] if selected else None,
+        selected_test=selected_test,
         candidates=candidate_scores,
     )
