@@ -87,9 +87,8 @@ def optimize_chronologically(
     test = candles[validation_end:]
     scored: list[tuple[float, Candidate, BacktestResult]] = []
     for candidate in default_candidates():
-        # Training is a separate historical score; validation alone drives selection.
-        # No validation/test candle is used to fit indicator state or generate past P&L.
-        run_backtest(train, starting_balance, strategy=candidate.strategy, funding_rates=funding_rates)
+        # The training segment is indicator context only; validation drives selection.
+        # This avoids using training P&L to tune repeatedly against the same window.
         validation_result = run_backtest(
             validation, starting_balance, strategy=candidate.strategy, warmup_candles=train, funding_rates=funding_rates
         )
