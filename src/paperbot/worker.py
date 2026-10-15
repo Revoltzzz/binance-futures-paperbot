@@ -113,7 +113,7 @@ def main() -> None:
     if symbol not in {"BTCUSDT", "ETHUSDT"}:
         raise SystemExit("PAPERBOT_SYMBOL must be BTCUSDT or ETHUSDT")
     try:
-        starting_balance = float(os.getenv("PAPERBOT_STARTING_BALANCE", "1000"))
+        starting_balance = float(os.getenv("PAPERBOT_STARTING_BALANCE", "100"))
         if not 100 <= starting_balance <= 10000:
             raise ValueError
     except ValueError as exc:
