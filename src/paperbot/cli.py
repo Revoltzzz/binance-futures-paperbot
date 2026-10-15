@@ -36,7 +36,7 @@ def main() -> None:
                                  help="evaluate both fixed strategies across sequential unseen windows")
     parser.add_argument("--walk-forward-folds", type=int, default=3,
                         help="number of sequential holdout folds for --walk-forward (2-10)")
-    parser.add_argument("--balance", type=float, default=1000.0, help="starting paper balance")
+    parser.add_argument("--balance", type=float, default=100.0, help="starting paper balance")
     parser.add_argument("--candles", type=int, default=300, help="number of synthetic candles for demo")
     args = parser.parse_args()
     if args.balance <= 0:
