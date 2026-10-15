@@ -59,6 +59,7 @@ def test_worker_persists_initial_state_and_processes_new_candle_once(tmp_path, m
     assert "No new candles" in message
     loaded_duplicate = store.load("BTCUSDT:5m")
     assert loaded_duplicate is not None
+    assert loaded_duplicate[0] == loaded_after[0]  # polling without a new candle is a true no-op
     assert loaded_duplicate[1]["last_timestamp"] == candles[-1].timestamp
     assert loaded_duplicate[1]["broker"] == loaded_after[1]["broker"]
 
