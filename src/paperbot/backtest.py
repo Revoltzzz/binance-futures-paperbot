@@ -110,7 +110,9 @@ def run_backtest(
     # Warm-up candles provide past context only: no simulated fills, risk events,
     # funding, or P&L are generated before the evaluation window begins.
     history: list[Candle] = warmup
-    pending_signal: Side | None = None
+    # A signal from the final warm-up close is eligible at the first holdout open.
+    # This preserves next-open execution without dropping a boundary trade.
+    pending_signal: Side | None = strategy.signal(history) if history else None
     peak = float(starting_balance)
     max_dd = 0.0
     session = None
