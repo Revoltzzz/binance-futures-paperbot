@@ -172,10 +172,15 @@ This uses the first half of the series for warm-up, then evaluates both fixed st
 For a small, predeclared candidate grid, run a chronological validation-selection and untouched-test evaluation:
 
 ```bash
-paperbot --okx --symbol BTCUSDT --interval 15m --limit 1500 --optimize-validate-test
-paperbot --okx --symbol ETHUSDT --interval 1h --limit 1500 --optimize-validate-test
+paperbot --okx --symbol BTCUSDT --interval 15m --limit 1000 --optimize-validate-test
+paperbot --okx --symbol ETHUSDT --interval 1h --limit 1000 --optimize-validate-test
 ```
 
 The command uses the first 50% of candles as indicator warm-up, ranks a small fixed candidate set on the next 25% by validation net return penalized for drawdown, and evaluates only the selected candidate on the final 25%. Candidates with fewer than five closed validation trades are ineligible. The report shows modeled fees/slippage and OKX historical funding when OKX is selected. Use sufficiently long data, multiple symbols/timeframes and cost-sensitivity checks; this is a research aid, not proof of an edge.
 
 The final test period is not scored for rejected candidates, reducing the temptation to choose a strategy based on test results. **This command does not modify the worker strategy, clear a safety pause, or enable live orders.** A candidate should not be promoted unless performance is stable across several new periods after realistic costs and funding.
+
+
+### Render worker market-data source
+
+The Render worker is configured for `okx-only` paper research mode. This deliberately uses public OKX USDT perpetual-swap candles and does not request Binance or Bybit endpoints, avoiding repeated calls to endpoints that reject this deployment. Session results are **OKX-specific research, not Binance backtest results**. To use Binance data, confirm the deployment's eligibility with Binance and change the source mode only when Binance's endpoint is legitimately available to that environment. This is not a proxy or location workaround.
