@@ -391,3 +391,26 @@ def test_cli_cost_sensitivity_reports_three_cost_scenarios(monkeypatch, capsys):
     assert "1.5x costs" in output
     assert "2.0x costs" in output
     assert "no strategy is automatically selected" in output
+
+
+
+def test_warmup_last_close_signal_executes_at_first_holdout_open():
+    class SignalAtWarmupBoundary:
+        def signal(self, history):
+            return Side.LONG if len(history) == 2 else None
+
+    start = 1_800_000_000_000
+    warmup = [
+        Candle(start, 100, 100.5, 99.5, 100),
+        Candle(start + 300_000, 100, 100.5, 99.5, 100),
+    ]
+    holdout = [
+        Candle(start + 600_000, 102, 102.5, 101.5, 102),
+        Candle(start + 900_000, 104, 104.5, 103.5, 104),
+    ]
+    result = run_backtest(
+        holdout, strategy=SignalAtWarmupBoundary(), warmup_candles=warmup
+    )
+    assert result.trades == 1
+    assert result.trade_history[0].entry_price == pytest.approx(102)
+    assert result.trade_history[0].entry_time_utc == "2027-01-15T08:10:00+00:00"
