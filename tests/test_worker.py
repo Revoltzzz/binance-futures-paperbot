@@ -213,3 +213,44 @@ def test_worker_persists_new_safety_pause_without_processing_candles(tmp_path, m
     assert "PAUSED at revision 2" in message
     assert after is not None and after[0] == 2
     assert "provider changed" in after[1]["paused_reason"].lower()
+
+
+def test_worker_pauses_when_recent_realized_expectancy_is_non_positive(tmp_path, monkeypatch):
+    import pytest
+
+    start = 1_800_000_000_000
+    candles = _candles(start, 2)
+
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            return datetime.fromtimestamp((start + 600_000) / 1000, tz=timezone.utc)
+
+    monkeypatch.setattr(worker, "datetime", Clock)
+    monkeypatch.setattr(
+        worker, "load_public_klines",
+        lambda **kwargs: (list(candles), "Binance USDⓈ-M Futures"),
+    )
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    worker.run_cycle(
+        store, symbol="BTCUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema",
+    )
+    loaded = store.load("BTCUSDT:5m")
+    assert loaded is not None
+    revision, state = loaded
+    state["trades"] = [
+        {"Net P&L (USDT)": -1.0, "Side": "LONG"} for _ in range(10)
+    ]
+    store.save("BTCUSDT:5m", state, expected_revision=revision)
+
+    message = worker.run_cycle(
+        store, symbol="BTCUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema",
+    )
+    after = store.load("BTCUSDT:5m")
+    assert "PAUSED" in message
+    assert "Performance circuit breaker" in message
+    assert after is not None and after[0] == revision + 2
+    assert "non-positive net expectancy" in after[1]["paused_reason"]
+    assert "resetting" in after[1]["paused_reason"]
