@@ -49,4 +49,3 @@ def test_worker_rejects_non_okx_source_in_okx_only_mode(monkeypatch):
             strategy_name="ema", market_data_mode="okx-only",
         )
     assert store.saved == []
-}
