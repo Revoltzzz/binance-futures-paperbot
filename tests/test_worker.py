@@ -106,3 +106,19 @@ def test_error_backoff_rejects_invalid_inputs():
         worker._error_backoff_seconds(0, 1)
     with pytest.raises(ValueError):
         worker._error_backoff_seconds(60, -1)
+
+
+
+def test_binance_restricted_location_error_is_classified():
+    error = RuntimeError(
+        "All public market-data providers failed. Binance USDⓈ-M Futures: "
+        "MarketDataError: HTTP Error 451: Service unavailable from a restricted "
+        "location according to Binance terms."
+    )
+    assert worker._is_binance_eligibility_restriction(error)
+
+
+def test_unrelated_451_is_not_misclassified():
+    assert not worker._is_binance_eligibility_restriction(
+        RuntimeError("HTTP Error 451: generic proxy error")
+    )

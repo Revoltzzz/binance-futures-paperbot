@@ -38,6 +38,16 @@ def _session_id(symbol: str, interval: str) -> str:
     return f"{symbol.upper()}:{interval}"
 
 
+def _is_binance_eligibility_restriction(error: BaseException) -> bool:
+    """Recognize Binance's explicit restricted-location response, not generic 451s."""
+    message = str(error).lower()
+    return (
+        "http error 451" in message
+        and "restricted location" in message
+        and "binance" in message
+    )
+
+
 def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
               starting_balance: float, strategy_name: str, history_limit: int = 500) -> str:
     """Run one safe cycle and atomically persist it; data access can be mocked in tests."""
@@ -162,10 +172,22 @@ def main() -> None:
                 )
             except (MarketDataError, OSError, ValueError) as exc:
                 consecutive_failures += 1
-                LOG.error("Cycle failed safely; account was not updated: %s", exc)
-                sleep_seconds = _error_backoff_seconds(
-                    poll_seconds, consecutive_failures, max_error_backoff
-                )
+                if _is_binance_eligibility_restriction(exc):
+                    LOG.critical(
+                        "Binance explicitly reports this service as unavailable from a restricted location. "
+                        "This is an account/eligibility or jurisdiction issue, not a transient coding error. "
+                        "Do not use a proxy or relocate the worker to evade the restriction; contact Binance "
+                        "support and confirm eligibility. Paper account remains unchanged. Error: %s",
+                        exc,
+                    )
+                    # Avoid repeatedly hammering an endpoint that has already
+                    # returned a permanent eligibility restriction.
+                    sleep_seconds = max_error_backoff
+                else:
+                    LOG.error("Cycle failed safely; account was not updated: %s", exc)
+                    sleep_seconds = _error_backoff_seconds(
+                        poll_seconds, consecutive_failures, max_error_backoff
+                    )
             except Exception:
                 consecutive_failures += 1
                 LOG.exception("Unexpected cycle failure; investigate before trusting this paper session.")
