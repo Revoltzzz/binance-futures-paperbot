@@ -102,6 +102,22 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     if session.symbol != symbol.upper() or session.interval != interval:
         raise ValueError("Stored paper account does not match configured symbol/interval")
     previous_pause_reason = session.paused_reason
+    # Fail closed when recent realized performance is persistently negative.
+    # This is a safety circuit breaker, not an optimizer: it never changes
+    # parameters or assumes that a different strategy will be profitable.
+    if session.paused_reason is None and len(session.trades) >= 10:
+        recent_review = summarize_trades(session.trades, window=14)
+        if (
+            recent_review["sample_size"] >= 10
+            and recent_review["expectancy_per_trade"] is not None
+            and recent_review["expectancy_per_trade"] <= 0
+        ):
+            session.paused_reason = (
+                "Performance circuit breaker: the most recent "
+                f"{recent_review['sample_size']} closed trades have non-positive "
+                f"net expectancy ({recent_review['expectancy_per_trade']:.4f} USDT/trade). "
+                "Trading is paused for review; select and validate a strategy before resetting."
+            )
     processed = session.process_new_candles(candles, market_source)
     # Polling between candle closes is normal. Avoid rewriting an identical
     # SQLite snapshot on every poll, but persist a newly-triggered safety pause.
