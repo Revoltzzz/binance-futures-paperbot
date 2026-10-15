@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from .models import Candle, Side, Trade
 from .paper import PaperBroker
+from .risk import RiskConfig
 from .strategy import EmaCrossStrategy
 
 
@@ -84,6 +85,7 @@ def run_backtest(
     strategy: EmaCrossStrategy | None = None,
     funding_rates: dict[int, float] | None = None,
     warmup_candles: list[Candle] | None = None,
+    risk_config: RiskConfig | None = None,
 ) -> BacktestResult:
     """Backtest close-generated signals at the next candle open.
 
@@ -104,7 +106,7 @@ def run_backtest(
         raise ValueError("warmup and test candles must be strictly increasing and non-overlapping")
 
     strategy = strategy or EmaCrossStrategy()
-    broker = PaperBroker(starting_balance)
+    broker = PaperBroker(starting_balance, config=risk_config)
     # Warm-up candles provide past context only: no simulated fills, risk events,
     # funding, or P&L are generated before the evaluation window begins.
     history: list[Candle] = warmup

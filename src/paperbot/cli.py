@@ -1,10 +1,12 @@
 import argparse
+from dataclasses import replace
 
 from .backtest import run_backtest
 from .binance_data import MarketDataError, load_binance_klines
 from .data import demo_candles, load_csv
 from .news import NewsError, fetch_latest_news, print_news, watch_news
 from .public_market_data import load_okx_funding_rates, load_okx_swap_klines
+from .risk import RiskConfig
 from .strategy import BreakRetestStrategy, EmaCrossStrategy
 
 
@@ -34,6 +36,8 @@ def main() -> None:
                                  help="compare EMA and break-retest on the final 30% holdout; no parameter tuning")
     evaluation_mode.add_argument("--walk-forward", action="store_true",
                                  help="evaluate both fixed strategies across sequential unseen windows")
+    evaluation_mode.add_argument("--cost-sensitivity", action="store_true",
+                                 help="compare both fixed strategies on the final 30% holdout at 1x, 1.5x and 2x modeled costs")
     parser.add_argument("--walk-forward-folds", type=int, default=3,
                         help="number of sequential holdout folds for --walk-forward (2-10)")
     parser.add_argument("--balance", type=float, default=100.0, help="starting paper balance")
@@ -67,7 +71,39 @@ def main() -> None:
             source_label = "deterministic synthetic demo candles (not real market data)"
         comparison_results = None
         walk_forward_results = None
-        if args.walk_forward:
+        cost_sensitivity_results = None
+        if args.cost_sensitivity:
+            split_index = int(len(candles) * 0.7)
+            if split_index < 20 or len(candles) - split_index < 2:
+                raise ValueError("cost sensitivity needs at least 20 warmup candles and 2 holdout candles")
+            warmup_candles = candles[:split_index]
+            test_candles = candles[split_index:]
+            candidates = (
+                ("ema", EmaCrossStrategy()),
+                ("break-retest", BreakRetestStrategy()),
+            )
+            cost_sensitivity_results = []
+            base_costs = RiskConfig()
+            for multiplier in (1.0, 1.5, 2.0):
+                scenario_config = replace(
+                    base_costs,
+                    fee_rate=base_costs.fee_rate * multiplier,
+                    slippage_rate=base_costs.slippage_rate * multiplier,
+                    funding_rate_per_8h=base_costs.funding_rate_per_8h * multiplier,
+                )
+                scenario_funding = (
+                    None if funding_rates is None
+                    else {timestamp: rate * multiplier for timestamp, rate in funding_rates.items()}
+                )
+                for name, candidate in candidates:
+                    scenario_result = run_backtest(
+                        test_candles, args.balance, strategy=candidate,
+                        funding_rates=scenario_funding, warmup_candles=warmup_candles,
+                        risk_config=scenario_config,
+                    )
+                    cost_sensitivity_results.append((multiplier, name, scenario_result))
+            result = None
+        elif args.walk_forward:
             if not 2 <= args.walk_forward_folds <= 10:
                 raise ValueError("--walk-forward-folds must be between 2 and 10")
             first_test_index = len(candles) // 2
@@ -121,6 +157,19 @@ def main() -> None:
     if args.okx:
         print("Funding: historical OKX rates; exchange-specific, not Binance funding rates")
     print(f"Candles: {len(candles)}")
+    if cost_sensitivity_results is not None:
+        print(f"Cost sensitivity: final {len(candles) - int(len(candles) * 0.7)} candles holdout; prior candles are warm-up only")
+        print("Costs scaled together: commission, adverse slippage, and funding; strategy parameters stay fixed.")
+        for multiplier, name, candidate_result in cost_sensitivity_results:
+            pf = "n/a" if candidate_result.profit_factor is None else f"{candidate_result.profit_factor:.3f}"
+            print(
+                f"{multiplier:3.1f}x costs | {name:14} return={candidate_result.total_return_pct:8.2f}% "
+                f"maxDD={candidate_result.max_drawdown_pct:7.2f}% "
+                f"trades={candidate_result.trades:4d} "
+                f"profitFactor={pf:>7} expectancy={candidate_result.expectancy_per_trade:9.4f}"
+            )
+        print("Higher-cost scenarios are stress tests, not forecasts; no strategy is automatically selected.")
+        return
     if walk_forward_results is not None:
         print(f"Walk-forward: {args.walk_forward_folds} sequential test folds; earlier candles are warm-up only")
         for fold_number, name, candidate_result in walk_forward_results:
