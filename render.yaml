@@ -17,7 +17,7 @@ services:
       - key: PAPERBOT_INTERVAL
         value: 5m
       - key: PAPERBOT_STARTING_BALANCE
-        value: "1000"
+        value: "100"
       - key: PAPERBOT_STRATEGY
         value: ema
       - key: PAPERBOT_POLL_SECONDS
