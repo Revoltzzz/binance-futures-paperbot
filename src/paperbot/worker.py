@@ -40,9 +40,10 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
         symbol=symbol, interval=interval, limit=history_limit,
         cache_dir=os.getenv("PAPERBOT_CACHE_DIR", ".cache/worker"),
         diagnostics=diagnostics,
+        binance_only=True,
     )
     for detail in diagnostics:
-        LOG.warning("Market-data provider failed; trying next provider: %s", detail)
+        LOG.warning("Market-data provider failed: %s", detail)
     LOG.info("Market data received: provider=%s candles=%d latest_candle_ms=%d",
              market_source, len(candles), candles[-1].timestamp)
     # This worker is specifically a Binance USDⓈ-M Futures simulator. Never
