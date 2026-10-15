@@ -80,7 +80,7 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     if not market_source.startswith(allowed_sources):
         raise MarketDataError(
             f"{market_data_mode} paper mode: refusing unsupported market data "
-            f"from {market_source}. Spot-proxy data is never accepted; no account state was updated."
+            f"from {market_source}. spot-proxy data is never accepted; no account state was updated."
         )
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     latest_age_ms = now_ms - (candles[-1].timestamp + INTERVAL_MS[interval])
