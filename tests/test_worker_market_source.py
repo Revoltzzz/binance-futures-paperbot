@@ -36,3 +36,30 @@ def test_worker_refuses_okx_fallback_without_updating_account(monkeypatch, tmp_p
         )
 
     assert store.saved == []
+
+
+def test_worker_fallback_does_not_overwrite_existing_account(monkeypatch):
+    existing_state = {"sentinel": "preserve-this-state"}
+    class ExistingStore(MemoryStore):
+        def load(self, session_id):
+            return (7, existing_state)
+
+    store = ExistingStore()
+    candles = [Candle(1792015200000, 100, 101, 99, 100, 1)]
+    monkeypatch.setattr(
+        worker,
+        "load_public_klines",
+        lambda **kwargs: (candles, "OKX USDT perpetual swap (fallback)"),
+    )
+
+    with pytest.raises(MarketDataError, match="Binance-only paper mode"):
+        worker.run_cycle(
+            store,
+            symbol="BTCUSDT",
+            interval="5m",
+            starting_balance=100,
+            strategy_name="ema",
+        )
+
+    assert store.saved == []
+    assert store.load("BTCUSDT:5m") == (7, existing_state)
