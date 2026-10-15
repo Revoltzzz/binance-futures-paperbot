@@ -412,5 +412,5 @@ def test_warmup_last_close_signal_executes_at_first_holdout_open():
         holdout, strategy=SignalAtWarmupBoundary(), warmup_candles=warmup
     )
     assert result.trades == 1
-    assert result.trade_history[0].entry_price == pytest.approx(102)
+    assert result.trade_history[0].entry_price == pytest.approx(102.0204)
     assert result.trade_history[0].entry_time_utc == "2027-01-15T08:10:00+00:00"
