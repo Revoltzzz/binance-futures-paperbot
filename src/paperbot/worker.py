@@ -49,29 +49,38 @@ def _is_binance_eligibility_restriction(error: BaseException) -> bool:
 
 
 def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
-              starting_balance: float, strategy_name: str, history_limit: int = 500) -> str:
-    """Run one safe cycle and atomically persist it; data access can be mocked in tests."""
+              starting_balance: float, strategy_name: str, history_limit: int = 500,
+              market_data_mode: str = "binance-only") -> str:
+    """Run one safe cycle and atomically persist it; never places exchange orders."""
+    if market_data_mode not in {"binance-only", "derivatives-fallback"}:
+        raise ValueError("market_data_mode must be binance-only or derivatives-fallback")
     loaded = store.load(_session_id(symbol, interval))
     diagnostics: list[str] = []
-    LOG.info("Fetching public futures candles: symbol=%s interval=%s limit=%d",
-             symbol, interval, history_limit)
+    LOG.info("Fetching public futures candles: symbol=%s interval=%s limit=%d mode=%s",
+             symbol, interval, history_limit, market_data_mode)
     candles, market_source = load_public_klines(
         symbol=symbol, interval=interval, limit=history_limit,
         cache_dir=os.getenv("PAPERBOT_CACHE_DIR", ".cache/worker"),
         diagnostics=diagnostics,
-        binance_only=True,
+        binance_only=(market_data_mode == "binance-only"),
     )
     for detail in diagnostics:
         LOG.warning("Market-data provider failed: %s", detail)
     LOG.info("Market data received: provider=%s candles=%d latest_candle_ms=%d",
              market_source, len(candles), candles[-1].timestamp)
-    # This worker is specifically a Binance USDⓈ-M Futures simulator. Never
-    # advance its account using another exchange's candles: cross-exchange
-    # prices can differ and would make the paper results misleading.
-    if not market_source.startswith("Binance USDⓈ-M Futures"):
+    # Binance-only is the strict default. Derivatives-fallback is an explicit
+    # paper-research mode that permits only Bybit/OKX perpetual futures. Spot
+    # candles are never accepted, and source identity is persisted per session.
+    allowed_sources = ("Binance USDⓈ-M Futures",)
+    if market_data_mode == "derivatives-fallback":
+        allowed_sources += (
+            "Bybit USDT linear perpetual (fallback)",
+            "OKX USDT perpetual swap (fallback)",
+        )
+    if not market_source.startswith(allowed_sources):
         raise MarketDataError(
-            "Binance-only paper mode: refusing non-Binance market data "
-            f"from {market_source}. No candles were processed or account state updated; spot-proxy and other exchange fallbacks are disabled."
+            f"{market_data_mode} paper mode: refusing unsupported market data "
+            f"from {market_source}. Spot-proxy data is never accepted; no account state was updated."
         )
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     latest_age_ms = now_ms - (candles[-1].timestamp + INTERVAL_MS[interval])
@@ -145,8 +154,17 @@ def main() -> None:
     max_error_backoff = _env_int("PAPERBOT_MAX_ERROR_BACKOFF_SECONDS", 900, 60, 3600)
     database_path = os.getenv("PAPERBOT_DB_PATH", "/var/data/paperbot.sqlite")
     store = SQLitePaperStore(database_path)
-    LOG.info("Starting paper-only worker: %s %s strategy=%s poll=%ss",
-             symbol, interval, strategy_name, poll_seconds)
+    market_data_mode = os.getenv("PAPERBOT_MARKET_DATA_MODE", "binance-only").strip().lower()
+    if market_data_mode not in {"binance-only", "derivatives-fallback"}:
+        raise SystemExit(
+            "PAPERBOT_MARKET_DATA_MODE must be binance-only or derivatives-fallback"
+        )
+    LOG.info("Starting paper-only worker: %s %s strategy=%s data_mode=%s poll=%ss",
+             symbol, interval, strategy_name, market_data_mode, poll_seconds)
+    if market_data_mode == "derivatives-fallback":
+        LOG.warning(
+            "Using alternate derivatives data for paper research only; results are not Binance-specific."
+        )
     LOG.warning("No live-order adapter is configured; this process only simulates trades.")
     consecutive_failures = 0
     while True:
@@ -159,6 +177,7 @@ def main() -> None:
                 LOG.info("%s", run_cycle(
                     store, symbol=symbol, interval=interval,
                     starting_balance=starting_balance, strategy_name=strategy_name,
+                    market_data_mode=market_data_mode,
                 ))
                 if consecutive_failures:
                     LOG.info("Paper worker recovered after %d consecutive failed cycle(s).",
@@ -172,7 +191,7 @@ def main() -> None:
                 )
             except (MarketDataError, OSError, ValueError) as exc:
                 consecutive_failures += 1
-                if _is_binance_eligibility_restriction(exc):
+                if market_data_mode == "binance-only" and _is_binance_eligibility_restriction(exc):
                     LOG.critical(
                         "Binance explicitly reports this service as unavailable from a restricted location. "
                         "This is an account/eligibility or jurisdiction issue, not a transient coding error. "
