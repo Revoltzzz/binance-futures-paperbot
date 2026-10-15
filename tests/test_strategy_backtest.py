@@ -334,3 +334,21 @@ def test_strategy_rejects_non_integer_periods_and_non_finite_inputs():
     with pytest.raises(ValueError, match="finite"):
         ema([1.0, float("nan")], 2)
 
+def test_backtest_drawdown_uses_intrabar_adverse_price_not_close_only():
+    class FirstCandleLong:
+        def signal(self, history):
+            return Side.LONG if len(history) == 1 else None
+
+    start = 1_800_000_000_000
+    candles = [
+        Candle(start, 100, 100.2, 99.8, 100),
+        Candle(start + 300_000, 100, 100.5, 99.8, 100.2),
+        # The position stays open, but price dips close to its stop before recovering.
+        Candle(start + 600_000, 100.2, 101.2, 99.1, 101.0),
+        Candle(start + 900_000, 101.0, 101.2, 100.8, 101.0),
+    ]
+    result = run_backtest(candles, strategy=FirstCandleLong())
+    assert result.trades == 1
+    # Intrabar drawdown should capture the dip even though the candle closes higher.
+    assert result.max_drawdown_pct > 0.5
+

@@ -187,7 +187,19 @@ def run_backtest(
         record_trade(broker.on_candle(candle), candle.timestamp)
         history.append(candle)
 
+        # Measure drawdown conservatively using intrabar adverse/favorable marks,
+        # not only candle closes. OHLC cannot reveal the exact path, so when the
+        # position survives the candle we use its worst and best observed extremes.
         equity = broker.equity(candle.close)
+        adverse_equity = equity
+        favorable_equity = equity
+        if broker.position is not None:
+            if broker.position.side == Side.LONG:
+                adverse_equity = broker.equity(candle.low)
+                favorable_equity = broker.equity(candle.high)
+            else:
+                adverse_equity = broker.equity(candle.high)
+                favorable_equity = broker.equity(candle.low)
         if not daily_halted and broker.risk.daily_loss_limit_hit(session_start_equity, equity):
             marked_equity = equity
             if broker.position is not None:
@@ -205,9 +217,9 @@ def run_backtest(
         if not daily_halted:
             pending_signal = strategy.signal(history)
 
-        peak = max(peak, equity)
+        peak = max(peak, favorable_equity)
         if peak > 0:
-            max_dd = max(max_dd, (peak - equity) / peak)
+            max_dd = max(max_dd, (peak - min(equity, adverse_equity)) / peak)
 
     if broker.position is not None and candles:
         record_trade(broker.close_position(candles[-1].close, "end_of_data"), candles[-1].timestamp)
