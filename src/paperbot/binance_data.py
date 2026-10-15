@@ -63,7 +63,7 @@ def _request_with_retries(url: str, fetcher: JsonFetcher, retries: int,
                     detail = " ".join(detail.split())[:500]
             except (OSError, ValueError):
                 detail = ""
-            last_error = (
+            last_error = RuntimeError(
                 f"HTTP Error {exc.code} {exc.reason}"
                 + (f": {detail}" if detail else "")
             )
