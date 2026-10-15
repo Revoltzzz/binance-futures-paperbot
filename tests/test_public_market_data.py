@@ -315,3 +315,29 @@ def test_okx_historical_funding_rates_reject_duplicate_timestamps():
     }
     with pytest.raises(MarketDataError, match="Duplicate OKX funding timestamp"):
         load_okx_funding_rates(fetcher=lambda _: payload, sleep=lambda _: None)
+
+def test_binance_only_mode_does_not_attempt_fallback_providers(tmp_path):
+    calls = {"binance": 0}
+
+    def blocked_binance(**kwargs):
+        calls["binance"] += 1
+        raise MarketDataError("HTTP Error 451")
+
+    def forbidden_fallback(**kwargs):
+        pytest.fail("Binance-only mode must not contact fallback exchanges")
+
+    with pytest.raises(MarketDataError, match="All public market-data providers failed"):
+        load_public_klines(
+            symbol="BTCUSDT",
+            interval="5m",
+            limit=2,
+            cache_dir=tmp_path,
+            binance_loader=blocked_binance,
+            bybit_loader=forbidden_fallback,
+            okx_loader=forbidden_fallback,
+            kraken_loader=forbidden_fallback,
+            binance_only=True,
+        )
+
+    assert calls["binance"] == 1
+
