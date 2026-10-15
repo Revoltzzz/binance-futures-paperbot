@@ -77,3 +77,63 @@ def test_fetcher_failure_is_explicit_and_does_not_use_stale_cache(tmp_path):
 def test_request_parameters_are_validated(kwargs):
     with pytest.raises(ValueError):
         load_binance_klines(fetcher=lambda _: [], **kwargs)
+
+
+from email.message import Message
+from urllib.error import HTTPError
+
+
+def _http_error(code, headers=None):
+    return HTTPError("https://fapi.binance.com/fapi/v1/klines", code,
+                     "mock HTTP error", headers or Message(), None)
+
+
+def test_permanent_binance_http_451_fails_fast_without_retry_or_sleep(tmp_path):
+    calls = []
+    sleeps = []
+
+    def fetch(_):
+        calls.append(1)
+        raise _http_error(451)
+
+    with pytest.raises(MarketDataError, match="failed after 1 attempt"):
+        load_binance_klines(cache_dir=tmp_path, retries=3, fetcher=fetch,
+                            sleep=sleeps.append)
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+def test_rate_limit_honors_short_retry_after_then_succeeds(tmp_path):
+    calls = []
+    sleeps = []
+    headers = Message()
+    headers["Retry-After"] = "2"
+
+    def fetch(_):
+        calls.append(1)
+        if len(calls) == 1:
+            raise _http_error(429, headers)
+        return [row(0, 299999), row(300000, 599999)]
+
+    candles = load_binance_klines(cache_dir=tmp_path, retries=1, now_ms=700000,
+                                  fetcher=fetch, sleep=sleeps.append)
+    assert len(candles) == 2
+    assert len(calls) == 2
+    assert sleeps == [2.0]
+
+
+def test_long_rate_limit_delay_defers_to_next_worker_poll(tmp_path):
+    calls = []
+    sleeps = []
+    headers = Message()
+    headers["Retry-After"] = "120"
+
+    def fetch(_):
+        calls.append(1)
+        raise _http_error(429, headers)
+
+    with pytest.raises(MarketDataError, match="failed after 1 attempt"):
+        load_binance_klines(cache_dir=tmp_path, retries=3, fetcher=fetch,
+                            sleep=sleeps.append)
+    assert len(calls) == 1
+    assert sleeps == []
