@@ -96,7 +96,7 @@ def test_error_backoff_grows_exponentially_and_is_capped():
     assert worker._error_backoff_seconds(60, 1) == 120
     assert worker._error_backoff_seconds(60, 2) == 240
     assert worker._error_backoff_seconds(60, 10) == 900
-    assert worker._error_backoff_seconds(60, 20, 3600) == 61440 if False else 900
+    assert worker._error_backoff_seconds(60, 20, 3600) == 3600
 
 
 def test_error_backoff_rejects_invalid_inputs():
