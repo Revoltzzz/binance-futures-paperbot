@@ -101,14 +101,19 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     session = PaperTradingSession.from_dict(state)
     if session.symbol != symbol.upper() or session.interval != interval:
         raise ValueError("Stored paper account does not match configured symbol/interval")
+    previous_pause_reason = session.paused_reason
     processed = session.process_new_candles(candles, market_source)
+    # Polling between candle closes is normal. Avoid rewriting an identical
+    # SQLite snapshot on every poll, but persist a newly-triggered safety pause.
+    if processed == 0 and session.paused_reason == previous_pause_reason:
+        if session.paused_reason:
+            return f"PAUSED at revision {revision}: {session.paused_reason}"
+        return f"No new candles; account revision {revision} remains current."
     new_revision = store.save(
         _session_id(symbol, interval), session.to_dict(), expected_revision=revision
     )
     if session.paused_reason:
         return f"PAUSED at revision {new_revision}: {session.paused_reason}"
-    if processed == 0:
-        return f"No new candles; account revision {new_revision} remains current."
     equity = session.broker.equity(candles[-1].close)
     review = summarize_trades(session.trades, window=20)
     if review["sample_size"]:
