@@ -129,7 +129,7 @@ def test_derivatives_fallback_mode_still_refuses_spot_data(tmp_path, monkeypatch
     )
     store = SQLitePaperStore(tmp_path / "paper.sqlite")
     import pytest
-    with pytest.raises(worker.MarketDataError, match="Spot-proxy data is never accepted"):
+    with pytest.raises(worker.MarketDataError, match="spot-proxy data is never accepted"):
         worker.run_cycle(
             store, symbol="BTCUSDT", interval="5m", starting_balance=1000,
             strategy_name="ema", market_data_mode="derivatives-fallback",
