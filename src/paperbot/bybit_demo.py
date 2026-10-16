@@ -101,7 +101,7 @@ def get_positions(category: str = "linear", symbol: str | None = None) -> dict[s
 
 
 def place_demo_order(*, symbol: str, side: str, qty: str, order_type: str = "Market",
-                     category: str = "linear", reduce_only: bool = False) -> dict[str, Any]:
+                     price: str | None = None, category: str = "linear", reduce_only: bool = False) -> dict[str, Any]:
     """Place a simulated order on the hard-coded Bybit Demo Trading endpoint only.
 
     This is not wired into the worker by default. It requires the explicit
@@ -123,6 +123,10 @@ def place_demo_order(*, symbol: str, side: str, qty: str, order_type: str = "Mar
         raise ValueError("only USDT linear demo orders are supported")
     if not isinstance(qty, str) or not qty or len(qty) > 32:
         raise ValueError("qty must be a non-empty decimal string")
+    if order_type == "Limit" and (not isinstance(price, str) or not price or len(price) > 32):
+        raise ValueError("limit orders require a non-empty decimal price string")
+    if order_type == "Market" and price is not None:
+        raise ValueError("price must be omitted for market orders")
     body = {
         "category": "linear",
         "symbol": normalized_symbol,
@@ -132,4 +136,6 @@ def place_demo_order(*, symbol: str, side: str, qty: str, order_type: str = "Mar
         "timeInForce": "IOC" if order_type == "Market" else "GTC",
         "reduceOnly": bool(reduce_only),
     }
+    if order_type == "Limit":
+        body["price"] = price
     return _request("POST", "/v5/order/create", body=body)
