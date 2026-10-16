@@ -297,7 +297,14 @@ class PaperTradingSession:
         if not isinstance(state.get("daily_halted"), bool):
             raise ValueError("Snapshot daily_halted flag must be boolean")
         session.daily_halted = state["daily_halted"]
-        session.entry_timestamp = state.get("entry_timestamp")
+        raw_entry_timestamp = state.get("entry_timestamp")
+        if raw_entry_timestamp is not None and (
+            isinstance(raw_entry_timestamp, bool)
+            or not isinstance(raw_entry_timestamp, int)
+            or raw_entry_timestamp <= 0
+        ):
+            raise ValueError("Snapshot entry timestamp must be a positive integer or null")
+        session.entry_timestamp = raw_entry_timestamp
         session.paused_reason = state.get("paused_reason")
         raw_journal = state.get("trades", [])
         if not isinstance(raw_journal, list):
