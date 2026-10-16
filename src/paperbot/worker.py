@@ -39,6 +39,11 @@ def _session_id(symbol: str, interval: str) -> str:
     return f"{symbol.upper()}:{interval}"
 
 
+def _is_paused_result(result: str) -> bool:
+    """Identify a persisted safety pause without interpreting its reason."""
+    return result.startswith("PAUSED at revision ")
+
+
 def _validate_worker_candles(candles: object, interval: str) -> list[Candle]:
     """Fail closed on malformed, misaligned, duplicated, or gapped candle history."""
     if interval not in INTERVAL_MS:
@@ -282,30 +287,47 @@ def main() -> None:
             )
         except Exception as exc:
             LOG.warning("Bybit demo endpoint connectivity check failed: %s", exc)
+    paused_poll_seconds = _env_int("PAPERBOT_PAUSED_POLL_SECONDS", 300, 60, 3600)
     consecutive_failures = 0
+    last_paused_result: str | None = None
     while True:
         sleep_seconds = poll_seconds
         if os.getenv("PAPERBOT_PAUSED", "false").strip().lower() in {"1", "true", "yes", "on"}:
             LOG.warning("Kill switch enabled; skipping market processing.")
         else:
             try:
-                LOG.info("Beginning paper-trading cycle.")
-                LOG.info("%s", run_cycle(
+                result = run_cycle(
                     store, symbol=symbol, interval=interval,
                     starting_balance=starting_balance, strategy_name=strategy_name,
                     market_data_mode=market_data_mode,
-                ))
+                )
+                if _is_paused_result(result):
+                    # Keep checking the local persisted state so an operator's
+                    # deliberate reset can be noticed, but do not spam logs or
+                    # poll market data every minute while the safety pause holds.
+                    if result != last_paused_result:
+                        LOG.warning("%s", result)
+                    else:
+                        LOG.debug("Safety-paused paper session remains unchanged.")
+                    last_paused_result = result
+                    sleep_seconds = max(poll_seconds, paused_poll_seconds)
+                else:
+                    last_paused_result = None
+                    LOG.info("Beginning paper-trading cycle.")
+                    LOG.info("%s", result)
                 if consecutive_failures:
                     LOG.info("Paper worker recovered after %d consecutive failed cycle(s).",
                              consecutive_failures)
                 consecutive_failures = 0
             except SessionConflict as exc:
+                last_paused_result = None
                 consecutive_failures += 1
                 LOG.error("Concurrent worker conflict; no overwrite occurred: %s", exc)
                 sleep_seconds = _error_backoff_seconds(
                     poll_seconds, consecutive_failures, max_error_backoff
                 )
             except (MarketDataError, OSError, ValueError) as exc:
+                last_paused_result = None
                 consecutive_failures += 1
                 if market_data_mode == "binance-only" and _is_binance_eligibility_restriction(exc):
                     LOG.critical(
@@ -324,14 +346,15 @@ def main() -> None:
                         poll_seconds, consecutive_failures, max_error_backoff
                     )
             except Exception:
+                last_paused_result = None
                 consecutive_failures += 1
                 LOG.exception("Unexpected cycle failure; investigate before trusting this paper session.")
                 sleep_seconds = _error_backoff_seconds(
                     poll_seconds, consecutive_failures, max_error_backoff
                 )
         if sleep_seconds > poll_seconds:
-            LOG.warning("Backing off for %d seconds after %d consecutive failed cycle(s).",
-                        sleep_seconds, consecutive_failures)
+            LOG.info("Sleeping for %d seconds (base poll interval %d seconds).",
+                     sleep_seconds, poll_seconds)
         time.sleep(sleep_seconds)
 
 
