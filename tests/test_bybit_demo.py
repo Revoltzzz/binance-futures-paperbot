@@ -39,7 +39,7 @@ def test_request_uses_only_hard_coded_demo_host(monkeypatch):
     assert seen["url"].startswith("https://api-demo.bybit.com/v5/position/list?")
     assert "api.bybit.com/" not in seen["url"]
     assert seen["method"] == "GET"
-    assert "X-bapi-api-key" in {key.lower(): value for key, value in seen["headers"].items()}
+    assert "x-bapi-api-key" in {key.lower(): value for key, value in seen["headers"].items()}
 
 
 def test_demo_order_is_disabled_by_default(monkeypatch):
