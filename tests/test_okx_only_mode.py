@@ -25,7 +25,7 @@ def test_worker_accepts_only_okx_perpetual_data_in_okx_only_mode(monkeypatch):
 
     def loader(**kwargs):
         seen.update(kwargs)
-        return candles, "OKX USDT perpetual swap (fallback)"
+        return candles, "OKX USDT perpetual swap"
 
     class Clock:
         @staticmethod
