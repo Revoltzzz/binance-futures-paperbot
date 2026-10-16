@@ -44,7 +44,10 @@ class RiskManager:
         self.config = config or RiskConfig()
 
     def size_position(self, equity: float, entry: float, stop: float) -> float:
-        if not all(math.isfinite(value) for value in (equity, entry, stop)):
+        values = (equity, entry, stop)
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
+            return 0.0
+        if not all(math.isfinite(value) for value in values):
             return 0.0
         if equity <= 0 or entry <= 0 or stop <= 0:
             return 0.0
@@ -62,7 +65,10 @@ class RiskManager:
         return max(0.0, min(qty_by_risk, qty_by_leverage))
 
     def daily_loss_limit_hit(self, starting_equity: float, current_equity: float) -> bool:
-        if not math.isfinite(starting_equity) or not math.isfinite(current_equity):
+        values = (starting_equity, current_equity)
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
+            return True
+        if not all(math.isfinite(value) for value in values):
             return True
         if starting_equity <= 0:
             return True
