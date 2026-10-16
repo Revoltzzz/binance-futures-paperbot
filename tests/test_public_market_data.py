@@ -95,7 +95,7 @@ def test_okx_is_used_when_binance_and_bybit_fail(tmp_path):
         okx_loader=lambda **kwargs: candle_list,
     )
     assert candles == candle_list
-    assert source == "OKX USDT perpetual swap (fallback)"
+    assert source == "OKX USDT perpetual swap"
     assert (tmp_path / "okx" / "BTCUSDT_5m.json").exists()
 
 
