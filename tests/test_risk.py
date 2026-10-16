@@ -34,6 +34,21 @@ def test_daily_loss_limit():
     assert risk.daily_loss_limit_hit(1000, 970)
 
 
+@pytest.mark.parametrize("invalid", [True, "100", None])
+def test_position_sizing_fails_closed_on_malformed_numeric_inputs(invalid):
+    risk = RiskManager()
+    assert risk.size_position(invalid, 100, 99) == 0.0
+    assert risk.size_position(1000, invalid, 99) == 0.0
+    assert risk.size_position(1000, 100, invalid) == 0.0
+
+
+@pytest.mark.parametrize("invalid", [True, "100", None])
+def test_daily_loss_limit_fails_closed_on_malformed_numeric_inputs(invalid):
+    risk = RiskManager()
+    assert risk.daily_loss_limit_hit(invalid, 1000) is True
+    assert risk.daily_loss_limit_hit(1000, invalid) is True
+
+
 def test_invalid_config_rejected():
     with pytest.raises(ValueError):
         RiskConfig(risk_per_trade=0.5)
