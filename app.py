@@ -597,3 +597,14 @@ if st.button("Check Bybit demo wallet", key="check_bybit_demo_wallet"):
         st.json(demo_wallet.get("result", {}))
     except Exception as exc:
         st.error(f"Bybit demo wallet check failed: {exc}")
+
+
+if st.button("Check OKX Demo Trading wallet", key="check_okx_demo_wallet"):
+    try:
+        from paperbot.okx_demo import get_balance
+        with st.spinner("Checking OKX Demo Trading API…"):
+            demo_balance = get_balance()
+        st.success("OKX Demo Trading API authenticated successfully.")
+        st.json(demo_balance.get("data", []))
+    except Exception as exc:
+        st.error(f"OKX demo wallet check failed: {exc}")
