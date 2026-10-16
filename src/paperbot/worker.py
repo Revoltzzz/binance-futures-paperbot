@@ -81,6 +81,20 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     if market_data_mode not in {"binance-only", "derivatives-fallback", "okx-only"}:
         raise ValueError("market_data_mode must be binance-only, derivatives-fallback, or okx-only")
     loaded = store.load(_session_id(symbol, interval))
+    if loaded is not None:
+        revision, state = loaded
+        paused_reason = state.get("paused_reason") if isinstance(state, dict) else None
+        legacy_okx_label_pause = (
+            "Market-data provider changed from OKX USDT perpetual swap (fallback) "
+            "to OKX USDT perpetual swap. Reset the session before continuing so "
+            "prices from different providers are not mixed."
+        )
+        # A persistent safety pause should not trigger a needless network request
+        # every polling cycle. The one exact legacy source-label pause is exempt
+        # because the migration below must verify that the provider is now the
+        # canonical OKX source. Never clear performance or risk pauses here.
+        if paused_reason and paused_reason != legacy_okx_label_pause:
+            return f"PAUSED at revision {revision}: {paused_reason}"
     diagnostics: list[str] = []
     LOG.info("Fetching public futures candles: symbol=%s interval=%s limit=%d mode=%s",
              symbol, interval, history_limit, market_data_mode)
