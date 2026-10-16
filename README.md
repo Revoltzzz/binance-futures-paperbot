@@ -23,6 +23,50 @@ The web dashboard is in `app.py` and is ready for Streamlit Community Cloud. It 
 
 To publish it, sign in to Streamlit Community Cloud with GitHub, select this repository, branch `main`, and main file `app.py`, then click Deploy. Hosting requires your own Streamlit authorization; repository changes alone cannot publish an app into your hosting account. The first deployment can take a few minutes.
 
+## Persistent worker dashboard and Bybit Demo Trading adapter
+
+The browser dashboard now includes a **read-only persistent worker account** section. If
+`PAPERBOT_DB_PATH` points to an existing worker SQLite database, it lists sessions and
+shows the saved balance, session revision, pause state, open simulated position, closed
+trade journal, CSV export, win rate, net P&L, expectancy, profit factor, and cumulative
+trade P&L. It does not reset or write account state. The dashboard also has a manual
+Bybit Demo Trading wallet-connection check; it only reads the demo wallet.
+
+**Deployment caveat:** Render's worker disk is private to that service and cannot be read
+from a separately hosted Streamlit Community Cloud app. To display the live worker's
+persisted history, run the dashboard in an environment that can access the same database
+file, or later move shared state to a deliberately configured shared datastore. Do not
+copy a database over the active worker's file. The existing hosted worker remains unchanged
+until infrastructure is deliberately migrated.
+
+A separate, isolated `paperbot.bybit_demo` module supports authenticated Bybit V5 demo
+wallet/position reads and simulated USDT-linear order submission through the hard-coded
+`https://api-demo.bybit.com` host. It has no production-host option. This module is not
+automatically called by the background worker, so the existing internal paper broker
+remains the default. The dashboard connection check does not submit orders.
+
+To test the authenticated demo wallet, create API credentials **while in Bybit Demo Trading
+mode** (not Testnet) and set these variables in the environment running the dashboard:
+
+- `BYBIT_DEMO_API_KEY`
+- `BYBIT_DEMO_API_SECRET`
+
+Never use production credentials here. No credentials are required for existing public
+OKX candle data or internal paper trading. Demo order submission is disabled unless
+`PAPERBOT_ENABLE_BYBIT_DEMO_ORDERS=true` is explicitly set; keep it unset while validating
+connectivity. Even when enabled, this adapter's order URL is fixed to Bybit's demo host.
+The worker has not been switched to route strategy signals into exchange demo orders; that
+needs separate end-to-end tests and a reviewed integration before it is considered active.
+
+For a **Render-side, unauthenticated reachability test** (this is the useful test for
+checking whether the demo hostname can be reached from the worker's network), set
+`PAPERBOT_CHECK_BYBIT_DEMO_CONNECTIVITY=true` in the worker environment and redeploy.
+On startup it performs one GET to `/v5/market/time` on the demo host and logs reachable /
+failed status. This does not test API-key authentication and does not place orders. Leave
+the flag unset after diagnosis if you do not need the extra check.
+
+Official API documentation: https://bybit-exchange.github.io/docs/v5/demo
+
 ## Persistent background paper worker
 
 The Streamlit dashboard is for viewing and manual analysis. For an always-on paper session, this repository also includes a separate worker process and a SQLite state store. The worker polls completed public candles, saves the virtual account, open position, risk state, pending signal, recent candle history and trade journal to SQLite, and uses revision checks to prevent two worker instances from silently overwriting each other. The worker defaults to Binance-only mode. The hosted Render configuration explicitly sets **`okx-only` paper research mode** because the current deployment cannot access Binance/Bybit public market-data endpoints. In this mode it requests only OKX USDT perpetual swaps, labels the source, and does not claim the results represent Binance execution. Kraken spot proxy candles are never accepted by the persistent worker. Software cannot legitimately remove an exchange's regional eligibility restriction; use an exchange/API endpoint you are eligible to access if Binance-specific validation is required. The worker also pauses if candle history has a gap or data is stale.
