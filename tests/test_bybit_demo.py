@@ -67,3 +67,14 @@ def test_demo_order_still_uses_demo_endpoint_when_enabled(monkeypatch, symbol):
     assert seen["path"] == "/v5/order/create"
     assert seen["body"]["category"] == "linear"
     assert seen["body"]["symbol"] == symbol
+
+
+
+def test_limit_demo_order_requires_price(monkeypatch):
+    monkeypatch.setenv("BYBIT_DEMO_API_KEY", "demo-key")
+    monkeypatch.setenv("BYBIT_DEMO_API_SECRET", "demo-secret")
+    monkeypatch.setenv("PAPERBOT_ENABLE_BYBIT_DEMO_ORDERS", "true")
+    with pytest.raises(ValueError, match="require a non-empty decimal price"):
+        bybit_demo.place_demo_order(
+            symbol="BTCUSDT", side="Buy", qty="0.001", order_type="Limit"
+        )
