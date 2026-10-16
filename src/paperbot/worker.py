@@ -35,8 +35,12 @@ def _error_backoff_seconds(poll_seconds: int, consecutive_failures: int,
     return min(poll_seconds * multiplier, maximum_seconds)
 
 
-def _session_id(symbol: str, interval: str) -> str:
-    return f"{symbol.upper()}:{interval}"
+def _session_id(symbol: str, interval: str, strategy_name: str | None = None) -> str:
+    """Keep the established EMA session ID stable; isolate experimental strategies."""
+    base = f"{symbol.upper()}:{interval}"
+    if strategy_name and strategy_name != "ema":
+        return f"{base}:{strategy_name}"
+    return base
 
 
 def _is_paused_result(result: str) -> bool:
@@ -85,7 +89,7 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     """Run one safe cycle and atomically persist it; never places exchange orders."""
     if market_data_mode not in {"binance-only", "derivatives-fallback", "okx-only"}:
         raise ValueError("market_data_mode must be binance-only, derivatives-fallback, or okx-only")
-    loaded = store.load(_session_id(symbol, interval))
+    loaded = store.load(_session_id(symbol, interval, strategy_name))
     if loaded is not None:
         revision, state = loaded
         paused_reason = state.get("paused_reason") if isinstance(state, dict) else None
@@ -155,7 +159,7 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
             starting_balance=starting_balance, strategy_name=strategy_name,
             initial_candles=candles,
         )
-        store.save(_session_id(symbol, interval), session.to_dict(), expected_revision=None)
+        store.save(_session_id(symbol, interval, strategy_name), session.to_dict(), expected_revision=None)
         return f"Initialized {symbol} {interval} paper account; waiting for new candles."
 
     revision, state = loaded
@@ -206,7 +210,7 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
             return f"PAUSED at revision {revision}: {session.paused_reason}"
         return f"No new candles; account revision {revision} remains current."
     new_revision = store.save(
-        _session_id(symbol, interval), session.to_dict(), expected_revision=revision
+        _session_id(symbol, interval, strategy_name), session.to_dict(), expected_revision=revision
     )
     if session.paused_reason:
         return f"PAUSED at revision {new_revision}: {session.paused_reason}"
