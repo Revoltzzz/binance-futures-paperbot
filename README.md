@@ -102,8 +102,8 @@ Supported environment settings:
 - `PAPERBOT_SYMBOL`: `BTCUSDT` or `ETHUSDT`
 - `PAPERBOT_INTERVAL`: `5m`, `15m` or `1h`
 - `PAPERBOT_STARTING_BALANCE`: 100–10,000 virtual USDT
-- `PAPERBOT_STRATEGY`: one strategy (`ema`, `break-retest` or `rsi-reversion`); used when `PAPERBOT_STRATEGIES` is unset
-- `PAPERBOT_STRATEGIES`: optional comma-separated list of isolated strategies, e.g. `break-retest,rsi-reversion`; each gets its own paper account and pause state
+- `PAPERBOT_STRATEGY`: one strategy (`ema`, `break-retest`, `rsi-reversion` or `atr-breakout`); used when `PAPERBOT_STRATEGIES` is unset
+- `PAPERBOT_STRATEGIES`: optional comma-separated list of isolated strategies, e.g. `break-retest,rsi-reversion,atr-breakout`; each gets its own paper account and pause state
 - `PAPERBOT_DB_PATH`: defaults to `/var/data/paperbot.sqlite` in the Render blueprint
 - `PAPERBOT_POLL_SECONDS`: 15–3600 seconds (default 60)
 - `PAPERBOT_PAUSED_POLL_SECONDS`: 60–3600 seconds (default 300); how often a safety-paused session rechecks persisted local state. It does not clear a pause or poll market data while the pause remains active.
@@ -255,3 +255,16 @@ The final test period is not scored for rejected candidates, reducing the tempta
 ### Render worker market-data source
 
 The Render worker is configured for `okx-only` paper research mode. This deliberately uses public OKX USDT perpetual-swap candles and does not request Binance or Bybit endpoints, avoiding repeated calls to endpoints that reject this deployment. Session results are **OKX-specific research, not Binance backtest results**. To use Binance data, confirm the deployment's eligibility with Binance and change the source mode only when Binance's endpoint is legitimately available to that environment. This is not a proxy or location workaround.
+
+
+### ATR-filtered volatility breakout (experimental)
+
+The `atr-breakout` candidate enters only after a completed candle closes beyond the
+preceding rolling range, the close is on the matching side of a trend EMA, and average
+true range as a percentage of price exceeds a configurable minimum. It is intended to
+avoid low-volatility range breaks; it does not guarantee fewer losing trades or positive
+returns. The strategy is available to the persistent paper worker via
+`PAPERBOT_STRATEGY=atr-breakout`, or isolated alongside other candidates with
+`PAPERBOT_STRATEGIES=ema,atr-breakout`. It is not the default and has not been promoted.
+Evaluate on multiple chronological holdout windows with realistic fees, slippage and
+funding before considering any strategy change.

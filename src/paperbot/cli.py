@@ -8,7 +8,7 @@ from .news import NewsError, fetch_latest_news, print_news, watch_news
 from .optimizer import optimize_chronologically
 from .public_market_data import load_okx_funding_rates, load_okx_swap_klines
 from .risk import RiskConfig
-from .strategy import BreakRetestStrategy, EmaCrossStrategy
+from .strategy import AtrVolatilityBreakoutStrategy, BreakRetestStrategy, EmaCrossStrategy
 
 
 def main() -> None:
@@ -30,7 +30,7 @@ def main() -> None:
     parser.add_argument("--interval", default="5m", help="interval for --binance (default: 5m)")
     parser.add_argument("--limit", type=int, default=500, help="completed candle request limit (1-1500)")
     parser.add_argument("--cache-dir", default=".cache/binance", help="directory for downloaded candle cache")
-    parser.add_argument("--strategy", choices=("ema", "break-retest"), default="ema",
+    parser.add_argument("--strategy", choices=("ema", "break-retest", "atr-breakout"), default="ema",
                         help="strategy candidate to evaluate; EMA remains the default baseline")
     evaluation_mode = parser.add_mutually_exclusive_group()
     evaluation_mode.add_argument("--compare-strategies", action="store_true",
@@ -157,7 +157,7 @@ def main() -> None:
             ]
             result = None
         else:
-            strategy = EmaCrossStrategy() if args.strategy == "ema" else BreakRetestStrategy()
+            strategy = {"ema": EmaCrossStrategy, "break-retest": BreakRetestStrategy, "atr-breakout": AtrVolatilityBreakoutStrategy}[args.strategy]()
             result = run_backtest(candles, args.balance, strategy=strategy, funding_rates=funding_rates)
     except (ValueError, OSError, MarketDataError, NewsError) as exc:
         parser.error(str(exc))
