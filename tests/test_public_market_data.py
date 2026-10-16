@@ -95,7 +95,7 @@ def test_okx_is_used_when_binance_and_bybit_fail(tmp_path):
         okx_loader=lambda **kwargs: candle_list,
     )
     assert candles == candle_list
-    assert source == "OKX USDT perpetual swap"
+    assert source == "OKX USDT perpetual swap (fallback)"
     assert (tmp_path / "okx" / "BTCUSDT_5m.json").exists()
 
 
@@ -370,7 +370,7 @@ def test_okx_only_mode_never_attempts_binance_or_other_fallbacks(tmp_path):
     )
     assert calls["okx"] == 1
     assert len(candles) == 2
-    assert source == "OKX USDT perpetual swap (fallback)"
+    assert source == "OKX USDT perpetual swap"
 
 
 def test_provider_loader_rejects_conflicting_single_provider_modes():
