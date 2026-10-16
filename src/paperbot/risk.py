@@ -19,6 +19,8 @@ class RiskConfig:
             self.max_leverage, self.fee_rate, self.max_daily_loss_pct,
             self.slippage_rate, self.funding_rate_per_8h,
         )
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
+            raise ValueError("risk settings must be numeric values, not booleans")
         if not all(math.isfinite(value) for value in values):
             raise ValueError("risk settings must be finite numbers")
         if not 0 < self.risk_per_trade <= 0.02:
