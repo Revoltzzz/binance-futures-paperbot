@@ -10,6 +10,7 @@ from .binance_data import INTERVAL_MS, MarketDataError
 from .public_market_data import load_public_klines
 from .session import PaperTradingSession
 from .review import summarize_trades
+from .models import Candle
 from .storage import SQLitePaperStore, SessionConflict
 
 LOG = logging.getLogger("paperbot.worker")
@@ -36,6 +37,31 @@ def _error_backoff_seconds(poll_seconds: int, consecutive_failures: int,
 
 def _session_id(symbol: str, interval: str) -> str:
     return f"{symbol.upper()}:{interval}"
+
+
+def _validate_worker_candles(candles: object, interval: str) -> list[Candle]:
+    """Fail closed on malformed, misaligned, duplicated, or gapped candle history."""
+    if interval not in INTERVAL_MS:
+        raise MarketDataError(f"Unsupported candle interval: {interval}")
+    if not isinstance(candles, list) or not candles:
+        raise MarketDataError("Market-data provider returned no candles")
+    if not all(isinstance(candle, Candle) for candle in candles):
+        raise MarketDataError("Market-data provider returned malformed candles")
+    duration = INTERVAL_MS[interval]
+    for candle in candles:
+        if candle.timestamp % duration != 0:
+            raise MarketDataError(
+                f"Candle timestamp is not aligned to {interval}: {candle.timestamp}"
+            )
+    for previous, current in zip(candles, candles[1:]):
+        difference = current.timestamp - previous.timestamp
+        if difference != duration:
+            kind = "missing" if difference > duration else "duplicate or out-of-order"
+            raise MarketDataError(
+                f"Market-data history contains {kind} candles: "
+                f"{previous.timestamp}, {current.timestamp}"
+            )
+    return candles
 
 
 def _is_binance_eligibility_restriction(error: BaseException) -> bool:
@@ -67,6 +93,7 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     )
     for detail in diagnostics:
         LOG.warning("Market-data provider failed: %s", detail)
+    candles = _validate_worker_candles(candles, interval)
     LOG.info("Market data received: provider=%s candles=%d latest_candle_ms=%d",
              market_source, len(candles), candles[-1].timestamp)
     # Binance-only is the strict default. Derivatives-fallback is an explicit
