@@ -138,3 +138,35 @@ def test_restore_rejects_misaligned_candle_timestamps():
     state["history"][1][0] += 1
     with pytest.raises(ValueError, match="timestamp is not aligned"):
         PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_non_positive_or_boolean_broker_balance():
+    import pytest
+
+    for invalid in (0, -1, True):
+        session = _session()
+        state = session.to_dict()
+        state["broker"]["balance"] = invalid
+        with pytest.raises(ValueError, match="broker balance must be finite and positive"):
+            PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_invalid_starting_balance():
+    import pytest
+
+    for invalid in (0, -1, True, float("nan"), float("inf")):
+        session = _session()
+        state = session.to_dict()
+        state["starting_balance"] = invalid
+        with pytest.raises(ValueError, match="starting balance must be a finite positive number"):
+            PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_boolean_session_start_equity():
+    import pytest
+
+    session = _session()
+    state = session.to_dict()
+    state["session_start_equity"] = True
+    with pytest.raises(ValueError, match="session-start equity must be a finite positive number"):
+        PaperTradingSession.from_dict(state)

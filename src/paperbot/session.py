@@ -158,11 +158,20 @@ class PaperTradingSession:
         for previous, current in zip(history, history[1:]):
             if current.timestamp - previous.timestamp != duration:
                 raise ValueError("Snapshot candle history is gapped, duplicated, or out of order")
+        raw_starting_balance = state.get("starting_balance")
+        if isinstance(raw_starting_balance, bool):
+            raise ValueError("Snapshot starting balance must be a finite positive number")
+        try:
+            starting_balance = float(raw_starting_balance)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("Snapshot starting balance must be a finite positive number") from exc
+        if not math.isfinite(starting_balance) or starting_balance <= 0:
+            raise ValueError("Snapshot starting balance must be a finite positive number")
         session = cls(
             symbol=state["symbol"],
             interval=state["interval"],
             market_source=state["market_source"],
-            starting_balance=float(state["starting_balance"]),
+            starting_balance=starting_balance,
             strategy_name=state["strategy_name"],
             fast_period=int(state.get("fast_period", 5)),
             slow_period=int(state.get("slow_period", 12)),
@@ -175,12 +184,15 @@ class PaperTradingSession:
         broker_state = state.get("broker")
         if not isinstance(broker_state, dict):
             raise ValueError("Snapshot has no broker state")
+        raw_balance = broker_state.get("balance")
+        if isinstance(raw_balance, bool):
+            raise ValueError("Snapshot broker balance must be finite and positive")
         try:
-            restored_balance = float(broker_state["balance"])
-        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            restored_balance = float(raw_balance)
+        except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("Snapshot broker balance is invalid") from exc
-        if not math.isfinite(restored_balance):
-            raise ValueError("Snapshot broker balance must be finite")
+        if not math.isfinite(restored_balance) or restored_balance <= 0:
+            raise ValueError("Snapshot broker balance must be finite and positive")
         session.broker.balance = restored_balance
         raw_position = broker_state.get("position")
         if raw_position is None:
@@ -232,9 +244,12 @@ class PaperTradingSession:
         raw_signal = state.get("pending_signal")
         session.pending_signal = Side(raw_signal) if raw_signal else None
         session.session_day = datetime.fromisoformat(state["session_day"]).date()
+        raw_session_start_equity = state.get("session_start_equity")
+        if isinstance(raw_session_start_equity, bool):
+            raise ValueError("Snapshot session-start equity must be a finite positive number")
         try:
-            session_start_equity = float(state["session_start_equity"])
-        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            session_start_equity = float(raw_session_start_equity)
+        except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("Snapshot session-start equity is invalid") from exc
         # A NaN or non-positive baseline can silently disable the daily-loss guard
         # after a restart because comparisons against NaN are always false.
