@@ -45,6 +45,21 @@ class SQLitePaperStore:
         finally:
             connection.close()
 
+    def list_sessions(self) -> list[dict[str, Any]]:
+        """List session identifiers and metadata for read-only dashboards."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT session_id, revision, updated_at FROM paper_sessions ORDER BY session_id"
+            ).fetchall()
+        return [
+            {
+                "session_id": str(row["session_id"]),
+                "revision": int(row["revision"]),
+                "updated_at": str(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
     def load(self, session_id: str) -> tuple[int, dict[str, Any]] | None:
         with self._connection() as connection:
             row = connection.execute(
