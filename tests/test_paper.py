@@ -51,16 +51,23 @@ def test_execution_price_rejects_boolean_and_non_numeric_values(invalid):
 def test_funding_rate_rejects_boolean_and_non_numeric_values():
     broker = PaperBroker(1000)
     assert broker.open_position(Side.LONG, 100) is not None
-    for invalid in (True, "0.001", None):
+    for invalid in (True, "0.001"):
         with pytest.raises(ValueError, match="funding_rate"):
             broker.apply_funding(100, invalid)
 
 
-@pytest.mark.parametrize("invalid", [True, "100", None])
+@pytest.mark.parametrize("invalid", [True, "100"])
 def test_equity_rejects_boolean_and_non_numeric_mark_price(invalid):
     broker = PaperBroker(1000)
     with pytest.raises(ValueError, match="mark_price"):
         broker.equity(invalid)
+
+
+def test_none_uses_documented_optional_defaults_for_funding_and_equity():
+    broker = PaperBroker(1000)
+    assert broker.equity(None) == broker.balance
+    assert broker.open_position(Side.LONG, 100) is not None
+    assert isinstance(broker.apply_funding(100, None), float)
 
 
 def test_non_finite_execution_prices_are_rejected():
