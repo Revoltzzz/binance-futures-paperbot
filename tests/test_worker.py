@@ -240,7 +240,20 @@ def test_worker_pauses_when_recent_realized_expectancy_is_non_positive(tmp_path,
     assert loaded is not None
     revision, state = loaded
     state["trades"] = [
-        {"Net P&L (USDT)": -1.0, "Side": "LONG"} for _ in range(10)
+        {
+            "Entry time (UTC)": "2026-10-16T10:00:00+00:00",
+            "Exit time (UTC)": "2026-10-16T10:05:00+00:00",
+            "Side": "LONG",
+            "Entry price": 100.0,
+            "Exit price": 99.0,
+            "Quantity": 1.0,
+            "Net P&L (USDT)": -1.0,
+            "Fees (USDT)": 0.1,
+            "Funding cost (USDT)": 0.0,
+            "Exit reason": "stop_loss",
+            "Balance after (USDT)": 990.0,
+        }
+        for _ in range(10)
     ]
     store.save("BTCUSDT:5m", state, expected_revision=revision)
 
