@@ -107,3 +107,34 @@ def test_restore_rejects_inconsistent_open_position():
     with pytest.raises(ValueError, match="long position stop/target"):
         PaperTradingSession.from_dict(state)
 
+
+
+def test_restore_rejects_non_finite_or_non_positive_session_start_equity():
+    import pytest
+
+    for invalid in (float("nan"), float("inf"), 0, -1):
+        session = _session()
+        state = session.to_dict()
+        state["session_start_equity"] = invalid
+        with pytest.raises(ValueError, match="session-start equity must be finite and positive"):
+            PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_non_boolean_daily_halt_flag():
+    import pytest
+
+    session = _session()
+    state = session.to_dict()
+    state["daily_halted"] = "false"
+    with pytest.raises(ValueError, match="daily_halted flag must be boolean"):
+        PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_misaligned_candle_timestamps():
+    import pytest
+
+    session = _session(_candles(3))
+    state = session.to_dict()
+    state["history"][1][0] += 1
+    with pytest.raises(ValueError, match="timestamp is not aligned"):
+        PaperTradingSession.from_dict(state)
