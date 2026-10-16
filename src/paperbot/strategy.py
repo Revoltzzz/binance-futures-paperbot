@@ -198,3 +198,67 @@ class RsiMeanReversionStrategy:
         if previous_rsi > self.overbought >= current_rsi and current.close >= upper_band:
             return Side.SHORT
         return None
+
+class AtrVolatilityBreakoutStrategy:
+    """Experimental range breakout with ATR volatility and EMA trend filters.
+
+    Uses only completed candles. A signal requires a close outside the prior
+    range, sufficient recent true-range volatility, and alignment with the
+    trend EMA. This is a research candidate, not a profitability claim.
+    """
+
+    def __init__(
+        self,
+        lookback: int = 20,
+        atr_period: int = 14,
+        trend_period: int = 50,
+        min_atr_pct: float = 0.002,
+    ):
+        for name, value, minimum in (
+            ("lookback", lookback, 2),
+            ("atr_period", atr_period, 2),
+            ("trend_period", trend_period, 2),
+        ):
+            if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+                raise ValueError(f"{name} must be an integer >= {minimum}")
+        if not math.isfinite(min_atr_pct) or not 0 <= min_atr_pct < 0.1:
+            raise ValueError("min_atr_pct must be finite and in [0, 0.1)")
+        self.lookback = lookback
+        self.atr_period = atr_period
+        self.trend_period = trend_period
+        self.min_atr_pct = min_atr_pct
+
+    def signal(self, candles: list[Candle]) -> Side | None:
+        minimum = max(self.lookback + 1, self.atr_period + 1, self.trend_period)
+        if len(candles) < minimum:
+            return None
+        current = candles[-1]
+        closes = [c.close for c in candles]
+        trend = ema(closes, self.trend_period)[-1]
+        if not math.isfinite(trend) or current.close <= 0:
+            return None
+
+        # True range includes gaps relative to the previous close.
+        recent = candles[-self.atr_period:]
+        true_ranges = []
+        for index in range(len(candles) - self.atr_period, len(candles)):
+            candle = candles[index]
+            previous_close = candles[index - 1].close
+            true_ranges.append(max(
+                candle.high - candle.low,
+                abs(candle.high - previous_close),
+                abs(candle.low - previous_close),
+            ))
+        atr_pct = (sum(true_ranges) / len(true_ranges)) / current.close
+        if atr_pct < self.min_atr_pct:
+            return None
+
+        prior = candles[-self.lookback - 1:-1]
+        resistance = max(c.high for c in prior)
+        support = min(c.low for c in prior)
+        if current.close > resistance and current.close > trend:
+            return Side.LONG
+        if current.close < support and current.close < trend:
+            return Side.SHORT
+        return None
+
