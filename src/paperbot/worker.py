@@ -261,8 +261,8 @@ def main() -> None:
     except ValueError as exc:
         raise SystemExit("PAPERBOT_STARTING_BALANCE must be between 100 and 10000 USDT") from exc
     strategy_name = os.getenv("PAPERBOT_STRATEGY", "ema")
-    if strategy_name not in {"ema", "break-retest"}:
-        raise SystemExit("PAPERBOT_STRATEGY must be ema or break-retest")
+    if strategy_name not in {"ema", "break-retest", "rsi-reversion"}:
+        raise SystemExit("PAPERBOT_STRATEGY must be ema, break-retest, or rsi-reversion")
     poll_seconds = _env_int("PAPERBOT_POLL_SECONDS", 60, 15, 3600)
     max_error_backoff = _env_int("PAPERBOT_MAX_ERROR_BACKOFF_SECONDS", 900, 60, 3600)
     database_path = os.getenv("PAPERBOT_DB_PATH", "/var/data/paperbot.sqlite")

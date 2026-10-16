@@ -102,7 +102,7 @@ Supported environment settings:
 - `PAPERBOT_SYMBOL`: `BTCUSDT` or `ETHUSDT`
 - `PAPERBOT_INTERVAL`: `5m`, `15m` or `1h`
 - `PAPERBOT_STARTING_BALANCE`: 100–10,000 virtual USDT
-- `PAPERBOT_STRATEGY`: `ema` or `break-retest`
+- `PAPERBOT_STRATEGY`: `ema`, `break-retest` or `rsi-reversion`
 - `PAPERBOT_DB_PATH`: defaults to `/var/data/paperbot.sqlite` in the Render blueprint
 - `PAPERBOT_POLL_SECONDS`: 15–3600 seconds (default 60)
 - `PAPERBOT_PAUSED_POLL_SECONDS`: 60–3600 seconds (default 300); how often a safety-paused session rechecks persisted local state. It does not clear a pause or poll market data while the pause remains active.
@@ -197,7 +197,7 @@ Funding is applied at 00:00, 08:00, and 16:00 UTC when a position is open. This 
 
 The course `The Trading Industry Will Hate Me for This FREE 10+ Hour Course` by fxalexg discusses market structure, higher-timeframe context, areas of interest, break-and-retest entries, candle confirmation, confluence, risk planning, and patience. These are educational concepts, not evidence that a particular rule set has an edge.
 
-The repository now includes a separate, rule-based `BreakRetestStrategy` candidate. It:
+The repository includes separate, rule-based `BreakRetestStrategy` and `RsiMeanReversionStrategy` candidates. The break/retest candidate:
 - waits for a candle close beyond a prior rolling high/low;
 - looks for a later retest of that level within a limited number of candles;
 - requires a confirming candle close and a trend filter using an EMA;
@@ -205,7 +205,7 @@ The repository now includes a separate, rule-based `BreakRetestStrategy` candida
 
 It is a deliberately simplified approximation. It does not yet implement full multi-timeframe structure, subjective supply/demand zones, or news/event filters. The existing EMA crossover remains the default; do not replace it with the new candidate unless out-of-sample results support that choice.
 
-Try the experimental strategy on public data without credentials:
+The RSI mean-reversion candidate uses Wilder-smoothed RSI exiting an extreme plus a Bollinger-band location filter. It is vulnerable to persistent trends, so evaluate it on both trending and ranging periods. It is not assumed to be profitable. The persistent worker can isolate it with `PAPERBOT_STRATEGY=rsi-reversion`; existing EMA and break/retest sessions remain separate.\n\nTry the experimental strategy on public data without credentials:
 ```bash
 paperbot --okx --symbol BTCUSDT --interval 15m --limit 400 --strategy break-retest
 paperbot --okx --symbol ETHUSDT --interval 1h --limit 400 --strategy break-retest
