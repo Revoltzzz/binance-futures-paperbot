@@ -139,3 +139,32 @@ def test_stop_is_still_checked_before_target_if_both_cross():
     assert pos is not None
     trade = broker.on_candle(Candle(2, 100, pos.take_profit_price + 1, pos.stop_price - 1, 100))
     assert trade is not None and trade.reason == "stop_loss"
+
+
+@pytest.mark.parametrize("field", ["open", "high", "low", "close", "volume"])
+def test_candle_rejects_boolean_numeric_fields(field):
+    values = {
+        "timestamp": 1_800_000_000_000,
+        "open": 100.0,
+        "high": 101.0,
+        "low": 99.0,
+        "close": 100.5,
+        "volume": 10.0,
+    }
+    values[field] = True
+    with pytest.raises(ValueError, match="numeric, not booleans"):
+        Candle(**values)
+
+
+def test_candle_rejects_non_numeric_ohlcv_fields():
+    values = {
+        "timestamp": 1_800_000_000_000,
+        "open": 100.0,
+        "high": 101.0,
+        "low": 99.0,
+        "close": 100.5,
+        "volume": 10.0,
+    }
+    values["close"] = "100.5"
+    with pytest.raises(ValueError, match="numeric, not booleans"):
+        Candle(**values)
