@@ -115,3 +115,86 @@ class BreakRetestStrategy:
 
         return None
 
+
+
+class RsiMeanReversionStrategy:
+    """Experimental RSI reversal with a Bollinger-band location filter.
+
+    Signals only when RSI exits an extreme and price remains stretched outside
+    the corresponding band. This is a research candidate, not a claim of edge.
+    """
+
+    def __init__(
+        self,
+        rsi_period: int = 14,
+        band_period: int = 20,
+        oversold: float = 30.0,
+        overbought: float = 70.0,
+        band_stddev: float = 2.0,
+    ):
+        if not isinstance(rsi_period, int) or isinstance(rsi_period, bool) or rsi_period < 2:
+            raise ValueError("rsi_period must be an integer >= 2")
+        if not isinstance(band_period, int) or isinstance(band_period, bool) or band_period < 2:
+            raise ValueError("band_period must be an integer >= 2")
+        if (
+            not math.isfinite(oversold) or not math.isfinite(overbought)
+            or not 0 < oversold < overbought < 100
+        ):
+            raise ValueError("require 0 < oversold < overbought < 100")
+        if not math.isfinite(band_stddev) or not 0.5 <= band_stddev <= 4:
+            raise ValueError("band_stddev must be finite and in [0.5, 4]")
+        self.rsi_period = rsi_period
+        self.band_period = band_period
+        self.oversold = oversold
+        self.overbought = overbought
+        self.band_stddev = band_stddev
+
+    def _rsi(self, closes: list[float]) -> list[float]:
+        """Wilder-smoothed RSI; NaN until enough price changes are available."""
+        values = [float("nan")] * len(closes)
+        if len(closes) <= self.rsi_period:
+            return values
+        changes = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        gains = [max(change, 0.0) for change in changes]
+        losses = [max(-change, 0.0) for change in changes]
+        avg_gain = sum(gains[:self.rsi_period]) / self.rsi_period
+        avg_loss = sum(losses[:self.rsi_period]) / self.rsi_period
+
+        def value(gain: float, loss: float) -> float:
+            if loss == 0:
+                return 100.0 if gain > 0 else 50.0
+            if gain == 0:
+                return 0.0
+            return 100.0 - 100.0 / (1.0 + gain / loss)
+
+        values[self.rsi_period] = value(avg_gain, avg_loss)
+        for index in range(self.rsi_period + 1, len(closes)):
+            change_index = index - 1
+            avg_gain = ((avg_gain * (self.rsi_period - 1)) + gains[change_index]) / self.rsi_period
+            avg_loss = ((avg_loss * (self.rsi_period - 1)) + losses[change_index]) / self.rsi_period
+            values[index] = value(avg_gain, avg_loss)
+        return values
+
+    def signal(self, candles: list[Candle]) -> Side | None:
+        minimum = max(self.rsi_period + 2, self.band_period + 1)
+        if len(candles) < minimum:
+            return None
+        closes = [c.close for c in candles]
+        rsi = self._rsi(closes)
+        previous_rsi, current_rsi = rsi[-2], rsi[-1]
+        if not math.isfinite(previous_rsi) or not math.isfinite(current_rsi):
+            return None
+
+        window = closes[-self.band_period:]
+        mean = sum(window) / self.band_period
+        variance = sum((value - mean) ** 2 for value in window) / self.band_period
+        deviation = math.sqrt(variance)
+        lower_band = mean - self.band_stddev * deviation
+        upper_band = mean + self.band_stddev * deviation
+        current = candles[-1]
+
+        if previous_rsi < self.oversold <= current_rsi and current.close <= lower_band:
+            return Side.LONG
+        if previous_rsi > self.overbought >= current_rsi and current.close >= upper_band:
+            return Side.SHORT
+        return None
