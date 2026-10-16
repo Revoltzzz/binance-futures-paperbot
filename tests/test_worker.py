@@ -254,3 +254,52 @@ def test_worker_pauses_when_recent_realized_expectancy_is_non_positive(tmp_path,
     assert after is not None and after[0] == revision + 2
     assert "non-positive net expectancy" in after[1]["paused_reason"]
     assert "resetting" in after[1]["paused_reason"]
+
+def test_worker_rejects_empty_candle_history_without_creating_account(tmp_path, monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(worker, "load_public_klines", lambda **kwargs: ([], "OKX USDT perpetual swap (fallback)"))
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    with pytest.raises(worker.MarketDataError, match="no candles"):
+        worker.run_cycle(
+            store, symbol="BTCUSDT", interval="5m", starting_balance=100,
+            strategy_name="ema", market_data_mode="okx-only",
+        )
+    assert store.load("BTCUSDT:5m") is None
+
+
+def test_worker_rejects_gapped_candle_history_without_mutating_existing_account(tmp_path, monkeypatch):
+    import pytest
+
+    start = 1_800_000_000_000
+    candles = [_candles(start, 1)[0], _candles(start + 600_000, 1)[0]]
+    monkeypatch.setattr(
+        worker, "load_public_klines",
+        lambda **kwargs: (candles, "OKX USDT perpetual swap (fallback)"),
+    )
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    with pytest.raises(worker.MarketDataError, match="missing candles"):
+        worker.run_cycle(
+            store, symbol="BTCUSDT", interval="5m", starting_balance=100,
+            strategy_name="ema", market_data_mode="okx-only",
+        )
+    assert store.load("BTCUSDT:5m") is None
+
+
+def test_worker_rejects_misaligned_candle_timestamps(tmp_path, monkeypatch):
+    import pytest
+
+    start = 1_800_000_000_000 + 1
+    candles = _candles(start, 2)
+    monkeypatch.setattr(
+        worker, "load_public_klines",
+        lambda **kwargs: (candles, "OKX USDT perpetual swap (fallback)"),
+    )
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    with pytest.raises(worker.MarketDataError, match="not aligned"):
+        worker.run_cycle(
+            store, symbol="BTCUSDT", interval="5m", starting_balance=100,
+            strategy_name="ema", market_data_mode="okx-only",
+        )
+    assert store.load("BTCUSDT:5m") is None
+
