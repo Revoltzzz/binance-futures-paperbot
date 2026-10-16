@@ -228,19 +228,47 @@ class PaperTradingSession:
             ):
                 raise ValueError("Snapshot short position stop/target levels are inconsistent")
             session.broker.position = Position(side=side, **position_values)
-        session.broker.trades = [
-            Trade(
-                side=Side(item["side"]),
-                entry_price=float(item["entry_price"]),
-                exit_price=float(item["exit_price"]),
-                quantity=float(item["quantity"]),
-                pnl=float(item["pnl"]),
-                fees=float(item["fees"]),
-                reason=item["reason"],
-                funding_cost=float(item.get("funding_cost", 0.0)),
-            )
-            for item in broker_state.get("trades", [])
-        ]
+        def finite_number(value, label: str, *, positive: bool = False, nonnegative: bool = False) -> float:
+            if isinstance(value, bool):
+                raise ValueError(f"Snapshot {label} must be a finite number")
+            try:
+                number = float(value)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"Snapshot {label} must be a finite number") from exc
+            if not math.isfinite(number):
+                raise ValueError(f"Snapshot {label} must be a finite number")
+            if positive and number <= 0:
+                raise ValueError(f"Snapshot {label} must be positive")
+            if nonnegative and number < 0:
+                raise ValueError(f"Snapshot {label} cannot be negative")
+            return number
+
+        raw_broker_trades = broker_state.get("trades", [])
+        if not isinstance(raw_broker_trades, list):
+            raise ValueError("Snapshot broker trade history must be a list")
+        restored_trades: list[Trade] = []
+        for index, item in enumerate(raw_broker_trades):
+            label = f"broker trade {index}"
+            if not isinstance(item, dict):
+                raise ValueError(f"Snapshot {label} must be an object")
+            try:
+                side = Side(item["side"])
+                reason = item["reason"]
+                if not isinstance(reason, str) or not reason.strip():
+                    raise ValueError(f"Snapshot {label} reason must be a non-empty string")
+                restored_trades.append(Trade(
+                    side=side,
+                    entry_price=finite_number(item["entry_price"], f"{label} entry price", positive=True),
+                    exit_price=finite_number(item["exit_price"], f"{label} exit price", positive=True),
+                    quantity=finite_number(item["quantity"], f"{label} quantity", positive=True),
+                    pnl=finite_number(item["pnl"], f"{label} P&L"),
+                    fees=finite_number(item["fees"], f"{label} fees", nonnegative=True),
+                    reason=reason,
+                    funding_cost=finite_number(item.get("funding_cost", 0.0), f"{label} funding cost"),
+                ))
+            except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"Snapshot {label} is malformed: {exc}") from exc
+        session.broker.trades = restored_trades
         raw_signal = state.get("pending_signal")
         session.pending_signal = Side(raw_signal) if raw_signal else None
         session.session_day = datetime.fromisoformat(state["session_day"]).date()
@@ -261,8 +289,63 @@ class PaperTradingSession:
         session.daily_halted = state["daily_halted"]
         session.entry_timestamp = state.get("entry_timestamp")
         session.paused_reason = state.get("paused_reason")
-        session.trades = list(state.get("trades", []))
-        session.events = list(state.get("events", []))
+        raw_journal = state.get("trades", [])
+        if not isinstance(raw_journal, list):
+            raise ValueError("Snapshot trade journal must be a list")
+        journal: list[dict] = []
+        for index, item in enumerate(raw_journal):
+            label = f"trade journal entry {index}"
+            if not isinstance(item, dict):
+                raise ValueError(f"Snapshot {label} must be an object")
+            required = (
+                "Entry time (UTC)", "Exit time (UTC)", "Side", "Entry price",
+                "Exit price", "Quantity", "Net P&L (USDT)", "Fees (USDT)",
+                "Funding cost (USDT)", "Exit reason", "Balance after (USDT)",
+            )
+            if any(key not in item for key in required):
+                raise ValueError(f"Snapshot {label} is missing required fields")
+            if item["Side"] not in {"LONG", "SHORT"}:
+                raise ValueError(f"Snapshot {label} has an invalid side")
+            if not isinstance(item["Exit reason"], str) or not item["Exit reason"].strip():
+                raise ValueError(f"Snapshot {label} has an invalid exit reason")
+            try:
+                entry_time = datetime.fromisoformat(item["Entry time (UTC)"].replace("Z", "+00:00"))
+                exit_time = datetime.fromisoformat(item["Exit time (UTC)"].replace("Z", "+00:00"))
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise ValueError(f"Snapshot {label} has an invalid timestamp") from exc
+            if entry_time.tzinfo is None or exit_time.tzinfo is None or exit_time < entry_time:
+                raise ValueError(f"Snapshot {label} timestamps are inconsistent")
+            finite_number(item["Entry price"], f"{label} entry price", positive=True)
+            finite_number(item["Exit price"], f"{label} exit price", positive=True)
+            finite_number(item["Quantity"], f"{label} quantity", positive=True)
+            finite_number(item["Net P&L (USDT)"], f"{label} P&L")
+            finite_number(item["Fees (USDT)"], f"{label} fees", nonnegative=True)
+            finite_number(item["Funding cost (USDT)"], f"{label} funding cost")
+            finite_number(item["Balance after (USDT)"], f"{label} balance", positive=True)
+            journal.append(dict(item))
+        raw_events = state.get("events", [])
+        if not isinstance(raw_events, list):
+            raise ValueError("Snapshot event journal must be a list")
+        events: list[dict] = []
+        for index, item in enumerate(raw_events):
+            label = f"event journal entry {index}"
+            if not isinstance(item, dict):
+                raise ValueError(f"Snapshot {label} must be an object")
+            if item.get("Event") != "daily_loss_limit":
+                raise ValueError(f"Snapshot {label} has an unknown event type")
+            try:
+                event_time = datetime.fromisoformat(item["Time (UTC)"].replace("Z", "+00:00"))
+            except (KeyError, AttributeError, TypeError, ValueError) as exc:
+                raise ValueError(f"Snapshot {label} has an invalid timestamp") from exc
+            if event_time.tzinfo is None:
+                raise ValueError(f"Snapshot {label} timestamp must include a timezone")
+            finite_number(item.get("Marked equity (USDT)"), f"{label} marked equity", positive=True)
+            finite_number(item.get("Balance after (USDT)"), f"{label} balance", positive=True)
+            if not isinstance(item.get("Details"), str):
+                raise ValueError(f"Snapshot {label} details must be a string")
+            events.append(dict(item))
+        session.trades = journal
+        session.events = events
         return session
 
     def _record_trade(self, trade, exit_timestamp: int) -> None:

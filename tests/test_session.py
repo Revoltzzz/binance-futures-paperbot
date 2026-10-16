@@ -170,3 +170,110 @@ def test_restore_rejects_boolean_session_start_equity():
     state["session_start_equity"] = True
     with pytest.raises(ValueError, match="session-start equity must be a finite positive number"):
         PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_malformed_broker_trade_history():
+    import pytest
+
+    session = _session()
+    state = session.to_dict()
+    state["broker"]["trades"] = [{
+        "side": "long",
+        "entry_price": 100.0,
+        "exit_price": 101.0,
+        "quantity": 1.0,
+        "pnl": float("nan"),
+        "fees": 0.1,
+        "reason": "take_profit",
+        "funding_cost": 0.0,
+    }]
+
+    with pytest.raises(ValueError, match="broker trade 0 P&L must be a finite number"):
+        PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_non_list_broker_trade_history():
+    import pytest
+
+    state = _session().to_dict()
+    state["broker"]["trades"] = {}
+    with pytest.raises(ValueError, match="broker trade history must be a list"):
+        PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_malformed_trade_journal_entry():
+    import pytest
+
+    state = _session().to_dict()
+    state["trades"] = [{
+        "Entry time (UTC)": "2026-10-16T10:00:00+00:00",
+        "Exit time (UTC)": "2026-10-16T10:05:00+00:00",
+        "Side": "LONG",
+        "Entry price": 100.0,
+        "Exit price": 101.0,
+        "Quantity": 1.0,
+        "Net P&L (USDT)": 1.0,
+        "Fees (USDT)": float("inf"),
+        "Funding cost (USDT)": 0.0,
+        "Exit reason": "take_profit",
+        "Balance after (USDT)": 1001.0,
+    }]
+
+    with pytest.raises(ValueError, match="trade journal entry 0 fees must be a finite number"):
+        PaperTradingSession.from_dict(state)
+
+
+def test_restore_rejects_malformed_event_journal_entry():
+    import pytest
+
+    state = _session().to_dict()
+    state["events"] = [{
+        "Time (UTC)": "2026-10-16T10:00:00+00:00",
+        "Event": "daily_loss_limit",
+        "Marked equity (USDT)": float("nan"),
+        "Balance after (USDT)": 1000.0,
+        "Details": "halted",
+    }]
+
+    with pytest.raises(ValueError, match="event journal entry 0 marked equity must be a finite number"):
+        PaperTradingSession.from_dict(state)
+
+
+def test_restore_accepts_valid_broker_trade_journal_and_event():
+    session = _session()
+    state = session.to_dict()
+    state["broker"]["trades"] = [{
+        "side": "long",
+        "entry_price": 100.0,
+        "exit_price": 101.0,
+        "quantity": 1.0,
+        "pnl": 0.8,
+        "fees": 0.2,
+        "reason": "take_profit",
+        "funding_cost": 0.0,
+    }]
+    state["trades"] = [{
+        "Entry time (UTC)": "2026-10-16T10:00:00+00:00",
+        "Exit time (UTC)": "2026-10-16T10:05:00+00:00",
+        "Side": "LONG",
+        "Entry price": 100.0,
+        "Exit price": 101.0,
+        "Quantity": 1.0,
+        "Net P&L (USDT)": 0.8,
+        "Fees (USDT)": 0.2,
+        "Funding cost (USDT)": 0.0,
+        "Exit reason": "take_profit",
+        "Balance after (USDT)": 1000.8,
+    }]
+    state["events"] = [{
+        "Time (UTC)": "2026-10-16T10:05:00+00:00",
+        "Event": "daily_loss_limit",
+        "Marked equity (USDT)": 990.0,
+        "Balance after (USDT)": 990.0,
+        "Details": "halted",
+    }]
+
+    restored = PaperTradingSession.from_dict(state)
+    assert len(restored.broker.trades) == 1
+    assert len(restored.trades) == 1
+    assert len(restored.events) == 1
