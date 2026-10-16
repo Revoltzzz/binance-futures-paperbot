@@ -472,3 +472,48 @@ def test_worker_does_not_clear_unrelated_pause_during_okx_label_migration(tmp_pa
     assert "PAUSED" in message
     assert after is not None
     assert after[1]["paused_reason"] == "Performance circuit breaker: manual review required."
+
+
+
+def test_worker_does_not_poll_market_data_while_safety_paused(tmp_path, monkeypatch):
+    start = 1_800_000_000_000
+    candles = _candles(start, 2)
+
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            return datetime.fromtimestamp((start + 600_000 + 60_000) / 1000, tz=timezone.utc)
+
+    monkeypatch.setattr(worker, "datetime", Clock)
+    monkeypatch.setattr(
+        worker, "load_public_klines",
+        lambda **kwargs: (list(candles), "OKX USDT perpetual swap"),
+    )
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    worker.run_cycle(
+        store, symbol="ETHUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema", market_data_mode="okx-only",
+    )
+    loaded = store.load("ETHUSDT:5m")
+    assert loaded is not None
+    revision, state = loaded
+    state["paused_reason"] = "Performance circuit breaker: manual review required."
+    store.save("ETHUSDT:5m", state, expected_revision=revision)
+    paused_revision = revision + 1
+
+    def forbidden_market_request(**kwargs):
+        raise AssertionError("paused sessions must not fetch market data")
+
+    monkeypatch.setattr(worker, "load_public_klines", forbidden_market_request)
+    message = worker.run_cycle(
+        store, symbol="ETHUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema", market_data_mode="okx-only",
+    )
+
+    after = store.load("ETHUSDT:5m")
+    assert message == (
+        f"PAUSED at revision {paused_revision}: "
+        "Performance circuit breaker: manual review required."
+    )
+    assert after is not None and after[0] == paused_revision
+    assert after[1]["paused_reason"] == state["paused_reason"]
