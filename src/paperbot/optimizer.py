@@ -4,6 +4,7 @@ This module never changes the live worker's configured strategy. Candidate selec
 based on a validation window; the final test window is evaluated only after selection.
 """
 from dataclasses import dataclass
+import math
 
 from .backtest import BacktestResult, run_backtest
 from .models import Candle
@@ -73,8 +74,30 @@ def optimize_chronologically(
     """
     if not isinstance(min_trades, int) or isinstance(min_trades, bool) or min_trades < 1:
         raise ValueError("min_trades must be an integer >= 1")
-    if starting_balance <= 0:
-        raise ValueError("starting_balance must be positive")
+    if (
+        not isinstance(starting_balance, (int, float))
+        or isinstance(starting_balance, bool)
+        or not math.isfinite(starting_balance)
+        or starting_balance <= 0
+    ):
+        raise ValueError("starting_balance must be finite and positive")
+    if not isinstance(candles, list) or not all(isinstance(candle, Candle) for candle in candles):
+        raise ValueError("candles must be a list of valid Candle objects")
+    if any(
+        current.timestamp <= previous.timestamp
+        for previous, current in zip(candles, candles[1:])
+    ):
+        raise ValueError("candles must have strictly increasing timestamps")
+    if funding_rates is not None:
+        if not isinstance(funding_rates, dict):
+            raise ValueError("funding_rates must be a timestamp-to-rate dictionary")
+        for timestamp, rate in funding_rates.items():
+            if (
+                not isinstance(timestamp, int) or isinstance(timestamp, bool) or timestamp < 0
+                or not isinstance(rate, (int, float)) or isinstance(rate, bool)
+                or not math.isfinite(rate)
+            ):
+                raise ValueError("funding rates must use non-negative integer timestamps and finite numeric rates")
     train_end = int(len(candles) * 0.5)
     validation_end = int(len(candles) * 0.75)
     if train_end < 50 or validation_end - train_end < 20 or len(candles) - validation_end < 20:
