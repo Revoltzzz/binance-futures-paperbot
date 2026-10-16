@@ -24,3 +24,17 @@ def test_trade_review_handles_empty_history_and_validates_values():
         summarize_trades([{"Net P&L (USDT)": float("nan")}])
     with pytest.raises(ValueError):
         summarize_trades([], window=0)
+
+def test_trade_review_reports_realized_drawdown_and_recovery_factor():
+    result = summarize_trades([_trade(10), _trade(-4), _trade(6), _trade(-15)])
+    assert result["gross_profit"] == 16
+    assert result["gross_loss"] == 19
+    assert result["max_drawdown_usdt"] == 15
+    assert result["recovery_factor"] == pytest.approx(-3 / 15)
+
+
+def test_trade_review_empty_history_has_zero_drawdown_and_no_recovery_factor():
+    result = summarize_trades([])
+    assert result["max_drawdown_usdt"] == 0
+    assert result["recovery_factor"] is None
+
