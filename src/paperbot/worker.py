@@ -106,7 +106,7 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
             "OKX USDT perpetual swap (fallback)",
         )
     elif market_data_mode == "okx-only":
-        allowed_sources = ("OKX USDT perpetual swap (fallback)",)
+        allowed_sources = ("OKX USDT perpetual swap",)
     if not market_source.startswith(allowed_sources):
         mode_label = {"binance-only": "Binance-only", "derivatives-fallback": "derivatives-fallback", "okx-only": "OKX-only"}[market_data_mode]
         raise MarketDataError(
