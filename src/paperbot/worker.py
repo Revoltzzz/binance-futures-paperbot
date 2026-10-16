@@ -168,13 +168,20 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     equity = session.broker.equity(candles[-1].close)
     review = summarize_trades(session.trades, window=20)
     if review["sample_size"]:
+        profit_factor = (
+            "%.2f" % review["profit_factor"]
+            if review["profit_factor"] is not None else "n/a"
+        )
         review_text = (
-            "last%d win_rate=%.1f%% expectancy=%.4f USDT/trade net_pnl=%.2f USDT"
+            "last%d win_rate=%.1f%% expectancy=%.4f USDT/trade "
+            "net_pnl=%.2f USDT profit_factor=%s max_drawdown=%.2f USDT"
             % (
                 review["sample_size"],
                 review["win_rate_pct"],
                 review["expectancy_per_trade"],
                 review["net_pnl"],
+                profit_factor,
+                review["max_drawdown_usdt"],
             )
         )
     else:
