@@ -121,6 +121,12 @@ def parse_klines(payload: object, interval: str, now_ms: int | None = None) -> l
         seen.add(open_time)
         if open_time < 0 or close_time < open_time:
             raise MarketDataError(f"Invalid candle timestamps at {open_time}")
+        # Fixed-duration intraday/daily bars are Unix-epoch aligned. Binance's
+        # calendar-anchored 3d and 1w bars use exchange-specific boundaries.
+        if interval not in {"3d", "1w"} and open_time % duration != 0:
+            raise MarketDataError(
+                f"Candle open timestamp is not aligned to interval {interval} at {open_time}"
+            )
         expected_close_time = open_time + duration - 1
         if close_time != expected_close_time:
             raise MarketDataError(

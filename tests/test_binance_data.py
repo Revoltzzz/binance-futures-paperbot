@@ -160,3 +160,14 @@ def test_http_error_body_is_included_in_bounded_diagnostics(tmp_path):
         )
     assert "451" in str(exc.value)
     assert "Access restricted in this region" in str(exc.value)
+
+
+
+def test_parser_rejects_misaligned_fixed_interval_open_timestamp():
+    with pytest.raises(MarketDataError, match="open timestamp is not aligned"):
+        parse_klines([row(1, 300000)], "5m", now_ms=400000)
+
+
+def test_parser_accepts_epoch_aligned_fixed_interval_candles():
+    candles = parse_klines([row(300000, 599999)], "5m", now_ms=700000)
+    assert candles[0].timestamp == 300000
