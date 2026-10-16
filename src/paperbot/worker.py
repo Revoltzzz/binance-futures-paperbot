@@ -106,8 +106,15 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
             "OKX USDT perpetual swap (fallback)",
         )
     elif market_data_mode == "okx-only":
-        allowed_sources = ("OKX USDT perpetual swap",)
-    if not market_source.startswith(allowed_sources):
+        # This mode accepts exactly the configured primary source label, not
+        # fallback-labelled data that merely shares the same prefix.
+        allowed_sources = ()
+    source_allowed = (
+        market_source == "OKX USDT perpetual swap"
+        if market_data_mode == "okx-only"
+        else market_source.startswith(allowed_sources)
+    )
+    if not source_allowed:
         mode_label = {"binance-only": "Binance-only", "derivatives-fallback": "derivatives-fallback", "okx-only": "OKX-only"}[market_data_mode]
         raise MarketDataError(
             f"{mode_label} paper mode: refusing unsupported market data "
