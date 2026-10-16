@@ -278,6 +278,8 @@ def load_public_klines(symbol: str = "BTCUSDT", interval: str = "5m", limit: int
         providers = providers[:1]
     elif okx_only:
         providers = providers[2:3]
+        # In single-provider mode OKX is the configured source, not a fallback.
+        providers[0] = ("OKX USDT perpetual swap", providers[0][1], providers[0][2])
     for label, cache_provider, get_data in providers:
         try:
             candles = _validate_provider_candles(get_data(), interval, label)

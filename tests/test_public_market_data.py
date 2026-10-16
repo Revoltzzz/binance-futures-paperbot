@@ -370,7 +370,7 @@ def test_okx_only_mode_never_attempts_binance_or_other_fallbacks(tmp_path):
     )
     assert calls["okx"] == 1
     assert len(candles) == 2
-    assert source == "OKX USDT perpetual swap (fallback)"
+    assert source == "OKX USDT perpetual swap"
 
 
 def test_provider_loader_rejects_conflicting_single_provider_modes():
