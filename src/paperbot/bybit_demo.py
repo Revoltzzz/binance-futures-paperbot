@@ -80,6 +80,27 @@ def _request(method: str, path: str, *, params: dict[str, Any] | None = None,
     return result
 
 
+def check_public_connectivity(timeout: float = 5.0) -> dict[str, Any]:
+    """Probe the demo API host without credentials or order permissions."""
+    request = Request(
+        DEMO_BASE_URL + "/v5/market/time",
+        headers={"Accept": "application/json", "User-Agent": "paperbot-demo-connectivity-check"},
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            raw = response.read(100_000)
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        raise BybitDemoError(f"Bybit demo endpoint connectivity failed: {exc}") from exc
+    try:
+        result = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise BybitDemoError("Bybit demo endpoint returned invalid JSON") from exc
+    if not isinstance(result, dict) or result.get("retCode") != 0:
+        detail = result.get("retMsg", "unexpected response") if isinstance(result, dict) else "unexpected response"
+        raise BybitDemoError(f"Bybit demo endpoint returned an error: {detail}")
+    return {"reachable": True, "endpoint": DEMO_BASE_URL, "authenticated": False}
+
 def get_wallet_balance(account_type: str = "UNIFIED") -> dict[str, Any]:
     """Read demo wallet balance; this method never places orders."""
     if account_type not in {"UNIFIED", "CONTRACT"}:
