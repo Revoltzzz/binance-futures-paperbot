@@ -41,3 +41,39 @@ def test_cli_runs_validation_selected_untouched_test_mode(monkeypatch, capsys):
     assert "Chronological optimization:" in output
     assert "UNTOUCHED FINAL TEST" in output or "No candidate met the minimum validation trade count" in output
     assert "does not change the worker strategy" in output
+
+@pytest.mark.parametrize("balance", [float("nan"), float("inf"), float("-inf"), 0, -1])
+def test_optimizer_rejects_non_finite_or_non_positive_balance(balance):
+    with pytest.raises(ValueError, match="finite and positive"):
+        optimize_chronologically(demo_candles(300), starting_balance=balance)
+
+
+def test_optimizer_rejects_out_of_order_candles():
+    candles = demo_candles(300)
+    candles[120], candles[121] = candles[121], candles[120]
+    with pytest.raises(ValueError, match="strictly increasing"):
+        optimize_chronologically(candles)
+
+
+def test_optimizer_rejects_non_candle_items():
+    candles = demo_candles(300)
+    candles[100] = {"timestamp": candles[100].timestamp}
+    with pytest.raises(ValueError, match="valid Candle objects"):
+        optimize_chronologically(candles)
+
+
+@pytest.mark.parametrize(
+    "funding_rates",
+    [
+        {1: float("nan")},
+        {1: float("inf")},
+        {-1: 0.001},
+        {1.5: 0.001},
+        {1: True},
+        [],
+    ],
+)
+def test_optimizer_rejects_invalid_funding_inputs(funding_rates):
+    with pytest.raises(ValueError, match="funding"):
+        optimize_chronologically(demo_candles(300), funding_rates=funding_rates)
+
