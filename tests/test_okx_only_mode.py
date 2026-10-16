@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timezone
 
 from paperbot import worker
 from paperbot.binance_data import MarketDataError
@@ -26,6 +27,12 @@ def test_worker_accepts_only_okx_perpetual_data_in_okx_only_mode(monkeypatch):
         seen.update(kwargs)
         return candles, "OKX USDT perpetual swap (fallback)"
 
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            return datetime.fromtimestamp((candles[-1].timestamp + 300_000 + 60_000) / 1000, tz=timezone.utc)
+
+    monkeypatch.setattr(worker, "datetime", Clock)
     monkeypatch.setattr(worker, "load_public_klines", loader)
     message = worker.run_cycle(
         store, symbol="BTCUSDT", interval="5m", starting_balance=1000,

@@ -114,7 +114,12 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
             f"from {market_source}. spot-proxy data is never accepted; no account state was updated."
         )
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    latest_age_ms = now_ms - (candles[-1].timestamp + INTERVAL_MS[interval])
+    latest_close_ms = candles[-1].timestamp + INTERVAL_MS[interval]
+    # Reject future/incomplete bars rather than trusting a provider or local clock
+    # enough to advance the account on a candle that has not actually closed.
+    if latest_close_ms > now_ms + 1_000:
+        raise MarketDataError("Latest candle is not complete; refusing to process it.")
+    latest_age_ms = now_ms - latest_close_ms
     if latest_age_ms > INTERVAL_MS[interval] * 3:
         raise MarketDataError("Latest completed candle is stale; refusing to process it.")
 

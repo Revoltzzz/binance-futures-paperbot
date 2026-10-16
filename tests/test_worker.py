@@ -15,7 +15,7 @@ def _candles(start, count):
 def test_worker_persists_initial_state_and_processes_new_candle_once(tmp_path, monkeypatch):
     start = 1_800_000_000_000
     candles = _candles(start, 2)
-    clock = {"now_ms": start + 300_000 + 60_000}
+    clock = {"now_ms": start + 600_000 + 60_000}
 
     class Clock:
         @staticmethod
@@ -67,7 +67,7 @@ def test_worker_persists_initial_state_and_processes_new_candle_once(tmp_path, m
 def test_worker_refuses_spot_proxy(tmp_path, monkeypatch):
     start = 1_800_000_000_000
     candles = _candles(start, 2)
-    clock = {"now_ms": start + 300_000 + 60_000}
+    clock = {"now_ms": start + 600_000 + 60_000}
 
     class Clock:
         @staticmethod
@@ -96,7 +96,7 @@ def test_worker_refuses_spot_proxy(tmp_path, monkeypatch):
 def test_worker_allows_explicit_perpetual_futures_fallback_for_paper_research(tmp_path, monkeypatch):
     start = 1_800_000_000_000
     candles = _candles(start, 2)
-    clock = {"now_ms": start + 300_000 + 60_000}
+    clock = {"now_ms": start + 600_000 + 60_000}
 
     class Clock:
         @staticmethod
@@ -183,7 +183,7 @@ def test_unrelated_451_is_not_misclassified():
 def test_worker_persists_new_safety_pause_without_processing_candles(tmp_path, monkeypatch):
     start = 1_800_000_000_000
     candles = _candles(start, 2)
-    clock = {"now_ms": start + 300_000 + 60_000}
+    clock = {"now_ms": start + 600_000 + 60_000}
 
     class Clock:
         @staticmethod
@@ -297,6 +297,30 @@ def test_worker_rejects_misaligned_candle_timestamps(tmp_path, monkeypatch):
     )
     store = SQLitePaperStore(tmp_path / "paper.sqlite")
     with pytest.raises(worker.MarketDataError, match="not aligned"):
+        worker.run_cycle(
+            store, symbol="BTCUSDT", interval="5m", starting_balance=100,
+            strategy_name="ema", market_data_mode="okx-only",
+        )
+    assert store.load("BTCUSDT:5m") is None
+
+def test_worker_rejects_incomplete_future_candle_without_creating_account(tmp_path, monkeypatch):
+    import pytest
+
+    start = 1_800_000_000_000
+    candles = _candles(start, 2)
+
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            return datetime.fromtimestamp((start + 300_000 + 60_000) / 1000, tz=timezone.utc)
+
+    monkeypatch.setattr(worker, "datetime", Clock)
+    monkeypatch.setattr(
+        worker, "load_public_klines",
+        lambda **kwargs: (candles, "OKX USDT perpetual swap (fallback)"),
+    )
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    with pytest.raises(worker.MarketDataError, match="not complete"):
         worker.run_cycle(
             store, symbol="BTCUSDT", interval="5m", starting_balance=100,
             strategy_name="ema", market_data_mode="okx-only",
