@@ -330,7 +330,7 @@ def test_worker_rejects_incomplete_future_candle_without_creating_account(tmp_pa
     monkeypatch.setattr(worker, "datetime", Clock)
     monkeypatch.setattr(
         worker, "load_public_klines",
-        lambda **kwargs: (candles, "OKX USDT perpetual swap (fallback)"),
+        lambda **kwargs: (candles, "OKX USDT perpetual swap"),
     )
     store = SQLitePaperStore(tmp_path / "paper.sqlite")
     with pytest.raises(worker.MarketDataError, match="not complete"):
@@ -447,9 +447,10 @@ def test_worker_does_not_clear_unrelated_pause_during_okx_label_migration(tmp_pa
             return datetime.fromtimestamp((start + 600_000 + 60_000) / 1000, tz=timezone.utc)
 
     monkeypatch.setattr(worker, "datetime", Clock)
+    source = {"name": "OKX USDT perpetual swap (fallback)"}
     monkeypatch.setattr(
         worker, "load_public_klines",
-        lambda **kwargs: (list(candles), "OKX USDT perpetual swap"),
+        lambda **kwargs: (list(candles), source["name"]),
     )
     store = SQLitePaperStore(tmp_path / "paper.sqlite")
     worker.run_cycle(
@@ -461,6 +462,7 @@ def test_worker_does_not_clear_unrelated_pause_during_okx_label_migration(tmp_pa
     revision, state = loaded
     state["paused_reason"] = "Performance circuit breaker: manual review required."
     store.save("ETHUSDT:5m", state, expected_revision=revision)
+    source["name"] = "OKX USDT perpetual swap"
 
     message = worker.run_cycle(
         store, symbol="ETHUSDT", interval="5m", starting_balance=1000,
