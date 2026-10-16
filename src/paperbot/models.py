@@ -21,6 +21,8 @@ class Candle:
         if not isinstance(self.timestamp, int) or isinstance(self.timestamp, bool) or self.timestamp < 0:
             raise ValueError("timestamp must be a non-negative integer")
         values = (self.open, self.high, self.low, self.close, self.volume)
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
+            raise ValueError("candle values must be numeric, not booleans")
         if not all(math.isfinite(value) for value in values):
             raise ValueError("candle values must be finite numbers")
         if min(self.open, self.high, self.low, self.close) <= 0:
