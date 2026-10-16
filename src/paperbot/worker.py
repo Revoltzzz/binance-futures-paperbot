@@ -26,6 +26,24 @@ def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     return value
 
 
+def _parse_strategy_names(configured: str | None, fallback: str = "ema") -> tuple[str, ...]:
+    """Parse one or more isolated paper strategies without silently ignoring typos."""
+    supported = {"ema", "break-retest", "rsi-reversion"}
+    raw_names = configured.split(",") if configured is not None else [fallback]
+    names = tuple(name.strip() for name in raw_names)
+    if not names or any(not name for name in names):
+        raise ValueError("strategy list must contain non-empty names")
+    if len(set(names)) != len(names):
+        raise ValueError("strategy list must not contain duplicates")
+    unsupported = [name for name in names if name not in supported]
+    if unsupported:
+        raise ValueError(
+            "strategies must be ema, break-retest, or rsi-reversion; "
+            f"unsupported: {', '.join(unsupported)}"
+        )
+    return names
+
+
 def _error_backoff_seconds(poll_seconds: int, consecutive_failures: int,
                           maximum_seconds: int = 900) -> int:
     """Bound retry frequency during persistent market-data or state failures."""
@@ -260,9 +278,13 @@ def main() -> None:
             raise ValueError
     except ValueError as exc:
         raise SystemExit("PAPERBOT_STARTING_BALANCE must be between 100 and 10000 USDT") from exc
-    strategy_name = os.getenv("PAPERBOT_STRATEGY", "ema")
-    if strategy_name not in {"ema", "break-retest", "rsi-reversion"}:
-        raise SystemExit("PAPERBOT_STRATEGY must be ema, break-retest, or rsi-reversion")
+    try:
+        strategy_names = _parse_strategy_names(
+            os.getenv("PAPERBOT_STRATEGIES"),
+            os.getenv("PAPERBOT_STRATEGY", "ema"),
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     poll_seconds = _env_int("PAPERBOT_POLL_SECONDS", 60, 15, 3600)
     max_error_backoff = _env_int("PAPERBOT_MAX_ERROR_BACKOFF_SECONDS", 900, 60, 3600)
     database_path = os.getenv("PAPERBOT_DB_PATH", "/var/data/paperbot.sqlite")
@@ -272,8 +294,8 @@ def main() -> None:
         raise SystemExit(
             "PAPERBOT_MARKET_DATA_MODE must be binance-only, derivatives-fallback, or okx-only"
         )
-    LOG.info("Starting paper-only worker: %s %s strategy=%s data_mode=%s poll=%ss",
-             symbol, interval, strategy_name, market_data_mode, poll_seconds)
+    LOG.info("Starting paper-only worker: %s %s strategies=%s data_mode=%s poll=%ss",
+             symbol, interval, ",".join(strategy_names), market_data_mode, poll_seconds)
     if market_data_mode in {"derivatives-fallback", "okx-only"}:
         LOG.warning(
             "Using alternate derivatives data for paper research only; results are not Binance-specific."
@@ -293,38 +315,41 @@ def main() -> None:
             LOG.warning("Bybit demo endpoint connectivity check failed: %s", exc)
     paused_poll_seconds = _env_int("PAPERBOT_PAUSED_POLL_SECONDS", 300, 60, 3600)
     consecutive_failures = 0
-    last_paused_result: str | None = None
+    last_paused_results: dict[str, str] = {}
     while True:
         sleep_seconds = poll_seconds
         if os.getenv("PAPERBOT_PAUSED", "false").strip().lower() in {"1", "true", "yes", "on"}:
             LOG.warning("Kill switch enabled; skipping market processing.")
         else:
             try:
-                result = run_cycle(
-                    store, symbol=symbol, interval=interval,
-                    starting_balance=starting_balance, strategy_name=strategy_name,
-                    market_data_mode=market_data_mode,
-                )
-                if _is_paused_result(result):
-                    # Keep checking the local persisted state so an operator's
-                    # deliberate reset can be noticed, but do not spam logs or
-                    # poll market data every minute while the safety pause holds.
-                    if result != last_paused_result:
-                        LOG.warning("%s", result)
+                all_strategies_paused = True
+                for strategy_name in strategy_names:
+                    result = run_cycle(
+                        store, symbol=symbol, interval=interval,
+                        starting_balance=starting_balance, strategy_name=strategy_name,
+                        market_data_mode=market_data_mode,
+                    )
+                    if _is_paused_result(result):
+                        # Preserve every strategy's pause independently. Never
+                        # clear a pause or repeatedly log an unchanged one.
+                        if result != last_paused_results.get(strategy_name):
+                            LOG.warning("strategy=%s %s", strategy_name, result)
+                        else:
+                            LOG.debug("Strategy %s remains safety-paused.", strategy_name)
+                        last_paused_results[strategy_name] = result
                     else:
-                        LOG.debug("Safety-paused paper session remains unchanged.")
-                    last_paused_result = result
+                        all_strategies_paused = False
+                        last_paused_results.pop(strategy_name, None)
+                        LOG.info("strategy=%s beginning paper-trading cycle", strategy_name)
+                        LOG.info("strategy=%s %s", strategy_name, result)
+                if all_strategies_paused:
                     sleep_seconds = max(poll_seconds, paused_poll_seconds)
-                else:
-                    last_paused_result = None
-                    LOG.info("Beginning paper-trading cycle.")
-                    LOG.info("%s", result)
                 if consecutive_failures:
                     LOG.info("Paper worker recovered after %d consecutive failed cycle(s).",
                              consecutive_failures)
                 consecutive_failures = 0
             except SessionConflict as exc:
-                last_paused_result = None
+                last_paused_results.clear()
                 consecutive_failures += 1
                 LOG.error("Concurrent worker conflict; no overwrite occurred: %s", exc)
                 sleep_seconds = _error_backoff_seconds(
