@@ -102,7 +102,8 @@ Supported environment settings:
 - `PAPERBOT_SYMBOL`: `BTCUSDT` or `ETHUSDT`
 - `PAPERBOT_INTERVAL`: `5m`, `15m` or `1h`
 - `PAPERBOT_STARTING_BALANCE`: 100–10,000 virtual USDT
-- `PAPERBOT_STRATEGY`: `ema`, `break-retest` or `rsi-reversion`
+- `PAPERBOT_STRATEGY`: one strategy (`ema`, `break-retest` or `rsi-reversion`); used when `PAPERBOT_STRATEGIES` is unset
+- `PAPERBOT_STRATEGIES`: optional comma-separated list of isolated strategies, e.g. `break-retest,rsi-reversion`; each gets its own paper account and pause state
 - `PAPERBOT_DB_PATH`: defaults to `/var/data/paperbot.sqlite` in the Render blueprint
 - `PAPERBOT_POLL_SECONDS`: 15–3600 seconds (default 60)
 - `PAPERBOT_PAUSED_POLL_SECONDS`: 60–3600 seconds (default 300); how often a safety-paused session rechecks persisted local state. It does not clear a pause or poll market data while the pause remains active.
@@ -205,7 +206,9 @@ The repository includes separate, rule-based `BreakRetestStrategy` and `RsiMeanR
 
 It is a deliberately simplified approximation. It does not yet implement full multi-timeframe structure, subjective supply/demand zones, or news/event filters. The existing EMA crossover remains the default; do not replace it with the new candidate unless out-of-sample results support that choice.
 
-The RSI mean-reversion candidate uses Wilder-smoothed RSI exiting an extreme plus a Bollinger-band location filter. It is vulnerable to persistent trends, so evaluate it on both trending and ranging periods. It is not assumed to be profitable. The persistent worker can isolate it with `PAPERBOT_STRATEGY=rsi-reversion`; existing EMA and break/retest sessions remain separate.\n\nTry the experimental strategy on public data without credentials:
+The RSI mean-reversion candidate uses Wilder-smoothed RSI exiting an extreme plus a Bollinger-band location filter. It is vulnerable to persistent trends, so evaluate it on both trending and ranging periods. It is not assumed to be profitable. The persistent worker can isolate it with `PAPERBOT_STRATEGY=rsi-reversion`, or compare it alongside another candidate using `PAPERBOT_STRATEGIES=break-retest,rsi-reversion`. Each candidate keeps separate paper history, balance and pause state.
+
+Try the experimental strategy on public data without credentials:
 ```bash
 paperbot --okx --symbol BTCUSDT --interval 15m --limit 400 --strategy break-retest
 paperbot --okx --symbol ETHUSDT --interval 1h --limit 400 --strategy break-retest
