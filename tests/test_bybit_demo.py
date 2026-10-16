@@ -78,3 +78,34 @@ def test_limit_demo_order_requires_price(monkeypatch):
         bybit_demo.place_demo_order(
             symbol="BTCUSDT", side="Buy", qty="0.001", order_type="Limit"
         )
+
+
+
+def test_public_connectivity_probe_uses_demo_endpoint_without_credentials(monkeypatch):
+    monkeypatch.delenv("BYBIT_DEMO_API_KEY", raising=False)
+    monkeypatch.delenv("BYBIT_DEMO_API_SECRET", raising=False)
+    seen = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            return json.dumps({"retCode": 0, "result": {"timeSecond": "1"}}).encode()
+
+    def fake_urlopen(request, timeout):
+        seen["url"] = request.full_url
+        seen["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(bybit_demo, "urlopen", fake_urlopen)
+    result = bybit_demo.check_public_connectivity()
+    assert result == {
+        "reachable": True,
+        "endpoint": "https://api-demo.bybit.com",
+        "authenticated": False,
+    }
+    assert seen["url"] == "https://api-demo.bybit.com/v5/market/time"
