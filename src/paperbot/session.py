@@ -198,16 +198,17 @@ class PaperTradingSession:
         if raw_position is None:
             session.broker.position = None
         else:
-            try:
-                if not isinstance(raw_position, dict):
-                    raise ValueError("Snapshot position must be an object")
-                raw_position_numbers = (
-                    raw_position["quantity"], raw_position["entry_price"],
-                    raw_position["stop_price"], raw_position["take_profit_price"],
-                    raw_position.get("entry_fee", 0.0), raw_position.get("funding_cost", 0.0),
+            if not isinstance(raw_position, dict):
+                raise ValueError("Snapshot position must be an object")
+            if any(
+                isinstance(raw_position.get(key, 0.0), bool)
+                for key in (
+                    "quantity", "entry_price", "stop_price", "take_profit_price",
+                    "entry_fee", "funding_cost",
                 )
-                if any(isinstance(value, bool) for value in raw_position_numbers):
-                    raise ValueError("Snapshot position values must not be booleans")
+            ):
+                raise ValueError("Snapshot position values must not be booleans")
+            try:
                 position_values = {
                     "quantity": float(raw_position["quantity"]),
                     "entry_price": float(raw_position["entry_price"]),
