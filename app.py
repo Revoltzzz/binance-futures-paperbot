@@ -6,6 +6,7 @@ runs local simulations; it never creates exchange orders.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +20,8 @@ from paperbot.session import PaperTradingSession
 from paperbot.news import NewsError, NewsItem, fetch_latest_news
 from paperbot.public_market_data import load_public_klines
 from paperbot.strategy import BreakRetestStrategy, EmaCrossStrategy
+from paperbot.storage import SQLitePaperStore
+from paperbot.review import summarize_trades
 
 ROOT = Path(".cache/web")
 st.set_page_config(page_title="PaperBot Market Lab", page_icon="📈", layout="wide")
@@ -459,3 +462,138 @@ except (NewsError, OSError, ValueError) as exc:
     st.warning(f"News feeds are temporarily unavailable: {exc}")
 
 st.caption("Data is fetched from public endpoints when available. A refresh does not imply every global market or news source is covered.")
+
+
+st.divider()
+st.header("Persistent worker account")
+st.caption(
+    "Read-only view of the background worker's durable SQLite account. "
+    "To show the hosted worker's actual account, this dashboard must run in the same "
+    "environment with access to its persistent database; a separate Streamlit Cloud "
+    "instance cannot read the Render worker's private disk."
+)
+worker_db = Path(os.getenv("PAPERBOT_DB_PATH", "/var/data/paperbot.sqlite"))
+if not worker_db.is_file():
+    st.info(
+        f"No worker database is mounted at {worker_db}. The market lab above remains "
+        "available. Set PAPERBOT_DB_PATH to an existing paperbot.sqlite file to view "
+        "persisted worker sessions; this section never initializes or resets account data."
+    )
+else:
+    try:
+        worker_store = SQLitePaperStore(worker_db)
+        worker_sessions = worker_store.list_sessions()
+        if not worker_sessions:
+            st.info("The worker database exists, but it contains no paper sessions yet.")
+        else:
+            selected_session_id = st.selectbox(
+                "Persisted worker session",
+                [row["session_id"] for row in worker_sessions],
+                format_func=lambda session_id: next(
+                    (f"{session_id} · revision {row['revision']} · updated {row['updated_at']}"
+                     for row in worker_sessions if row["session_id"] == session_id),
+                    session_id,
+                ),
+                key="persisted_worker_session",
+            )
+            loaded_worker = worker_store.load(selected_session_id)
+            if loaded_worker is None:
+                st.warning("This session changed while the dashboard was loading. Refresh to retry.")
+            else:
+                worker_revision, worker_state = loaded_worker
+                worker_broker = worker_state.get("broker", {})
+                worker_position = worker_broker.get("position")
+                worker_journal = worker_state.get("trades", [])
+                worker_balance = float(worker_broker.get("balance", 0.0))
+                worker_starting = float(worker_state.get("starting_balance", worker_balance))
+                worker_net = worker_balance - worker_starting
+                worker_equity_cols = st.columns(4)
+                worker_equity_cols[0].metric("Persisted balance", f"{worker_balance:,.2f} USDT")
+                worker_equity_cols[1].metric("Net balance change", f"{worker_net:+,.2f} USDT")
+                worker_equity_cols[2].metric("Closed trades", str(len(worker_journal)))
+                worker_equity_cols[3].metric("Snapshot revision", str(worker_revision))
+                st.caption(
+                    f"{worker_state.get('symbol', 'Unknown symbol')} · "
+                    f"{worker_state.get('interval', 'Unknown interval')} · "
+                    f"Source: {worker_state.get('market_source', 'unknown')} · "
+                    f"Strategy: {worker_state.get('strategy_name', 'unknown')}"
+                )
+                if worker_state.get("paused_reason"):
+                    st.warning(f"Worker paused: {worker_state['paused_reason']}")
+                elif worker_state.get("daily_halted"):
+                    st.warning("Daily-loss guard is active.")
+                else:
+                    st.success("No persisted pause reason is recorded in this snapshot.")
+                if worker_position:
+                    st.subheader("Open simulated position")
+                    st.dataframe(pd.DataFrame([{
+                        "Side": worker_position.get("side"),
+                        "Quantity": worker_position.get("quantity"),
+                        "Entry price": worker_position.get("entry_price"),
+                        "Stop loss": worker_position.get("stop_price"),
+                        "Take profit": worker_position.get("take_profit_price"),
+                        "Entry fee": worker_position.get("entry_fee"),
+                        "Funding cost": worker_position.get("funding_cost"),
+                    }]), use_container_width=True, hide_index=True)
+                else:
+                    st.caption("No open simulated position in this saved snapshot.")
+                if worker_journal:
+                    worker_trades_df = pd.DataFrame(worker_journal)
+                    worker_review = summarize_trades(worker_journal, window=max(1, len(worker_journal)))
+                    worker_metric_cols = st.columns(4)
+                    worker_metric_cols[0].metric(
+                        "Win rate", "n/a" if worker_review["win_rate_pct"] is None
+                        else f"{worker_review['win_rate_pct']:.1f}%"
+                    )
+                    worker_metric_cols[1].metric(
+                        "Trade net P&L", f"{worker_review['net_pnl']:+.2f} USDT"
+                    )
+                    worker_metric_cols[2].metric(
+                        "Expectancy / trade",
+                        "n/a" if worker_review["expectancy_per_trade"] is None
+                        else f"{worker_review['expectancy_per_trade']:+.4f} USDT"
+                    )
+                    worker_metric_cols[3].metric(
+                        "Profit factor",
+                        "n/a" if worker_review["profit_factor"] is None
+                        else f"{worker_review['profit_factor']:.2f}"
+                    )
+                    st.subheader("Persisted trade history")
+                    st.dataframe(worker_trades_df.iloc[::-1], use_container_width=True, hide_index=True)
+                    st.download_button(
+                        "Export worker trades (CSV)",
+                        data=worker_trades_df.to_csv(index=False).encode("utf-8"),
+                        file_name=f"worker_{selected_session_id.replace(':', '_')}_trades.csv",
+                        mime="text/csv",
+                    )
+                    if "Net P&L (USDT)" in worker_trades_df:
+                        worker_trades_df["Cumulative net P&L (USDT)"] = (
+                            pd.to_numeric(worker_trades_df["Net P&L (USDT)"], errors="coerce")
+                            .fillna(0).cumsum()
+                        )
+                        st.line_chart(
+                            worker_trades_df.set_index("Exit time (UTC)")[
+                                ["Cumulative net P&L (USDT)"]
+                            ]
+                        )
+                else:
+                    st.info("No closed worker trades have been recorded in this session yet.")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        st.error(f"Could not read the persisted worker snapshot safely: {exc}")
+
+st.divider()
+st.header("Bybit Demo Trading connection")
+st.caption(
+    "Connection check only: reads the demo wallet and cannot submit orders. "
+    "Create API credentials while Bybit Demo Trading mode is active, then configure "
+    "BYBIT_DEMO_API_KEY and BYBIT_DEMO_API_SECRET privately in the dashboard environment."
+)
+if st.button("Check Bybit demo wallet", key="check_bybit_demo_wallet"):
+    try:
+        from paperbot.bybit_demo import BybitDemoError, get_wallet_balance
+        with st.spinner("Checking Bybit Demo Trading API…"):
+            demo_wallet = get_wallet_balance()
+        st.success("Bybit Demo Trading API authenticated successfully.")
+        st.json(demo_wallet.get("result", {}))
+    except Exception as exc:
+        st.error(f"Bybit demo wallet check failed: {exc}")
