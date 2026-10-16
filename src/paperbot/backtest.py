@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 from datetime import datetime, timezone
 
 from .models import Candle, Side, Trade
@@ -94,13 +95,32 @@ def run_backtest(
     are blocked until the next UTC day. Journal entries are scoped to this run
     and are not durable storage or an exchange ledger.
     """
-    if starting_balance <= 0:
-        raise ValueError("starting_balance must be positive")
+    if (
+        not isinstance(starting_balance, (int, float))
+        or isinstance(starting_balance, bool)
+        or not math.isfinite(starting_balance)
+        or starting_balance <= 0
+    ):
+        raise ValueError("starting_balance must be finite and positive")
+    if not isinstance(candles, list) or not all(isinstance(candle, Candle) for candle in candles):
+        raise ValueError("candles must be a list of valid Candle objects")
     if any(current.timestamp <= previous.timestamp
            for previous, current in zip(candles, candles[1:])):
         raise ValueError("candles must have strictly increasing timestamps")
     warmup = list(warmup_candles or [])
+    if not all(isinstance(candle, Candle) for candle in warmup):
+        raise ValueError("warmup_candles must contain only valid Candle objects")
     combined = warmup + candles
+    if funding_rates is not None:
+        if not isinstance(funding_rates, dict):
+            raise ValueError("funding_rates must be a timestamp-to-rate dictionary")
+        for timestamp, rate in funding_rates.items():
+            if (
+                not isinstance(timestamp, int) or isinstance(timestamp, bool) or timestamp < 0
+                or not isinstance(rate, (int, float)) or isinstance(rate, bool)
+                or not math.isfinite(rate)
+            ):
+                raise ValueError("funding rates must use non-negative integer timestamps and finite numeric rates")
     if any(current.timestamp <= previous.timestamp
            for previous, current in zip(combined, combined[1:])):
         raise ValueError("warmup and test candles must be strictly increasing and non-overlapping")
