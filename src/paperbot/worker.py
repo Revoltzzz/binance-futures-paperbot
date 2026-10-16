@@ -258,6 +258,16 @@ def main() -> None:
     if market_data_mode == "okx-only":
         LOG.info("OKX-only mode avoids Binance/Bybit requests; public OKX USDT perpetual swaps are the sole market-data source.")
     LOG.warning("No live-order adapter is configured; this process only simulates trades.")
+    if os.getenv("PAPERBOT_CHECK_BYBIT_DEMO_CONNECTIVITY", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from .bybit_demo import check_public_connectivity
+            probe = check_public_connectivity()
+            LOG.info(
+                "Bybit demo endpoint connectivity: reachable=%s endpoint=%s authenticated=%s",
+                probe["reachable"], probe["endpoint"], probe["authenticated"],
+            )
+        except Exception as exc:
+            LOG.warning("Bybit demo endpoint connectivity check failed: %s", exc)
     consecutive_failures = 0
     while True:
         sleep_seconds = poll_seconds
