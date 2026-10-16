@@ -7,7 +7,12 @@ from .risk import RiskConfig, RiskManager
 class PaperBroker:
     """Local-only broker. It never sends orders or contacts Binance."""
     def __init__(self, starting_balance: float = 1000.0, config: RiskConfig | None = None):
-        if not math.isfinite(starting_balance) or starting_balance <= 0:
+        if (
+            isinstance(starting_balance, bool)
+            or not isinstance(starting_balance, (int, float))
+            or not math.isfinite(starting_balance)
+            or starting_balance <= 0
+        ):
             raise ValueError("starting_balance must be a finite positive number")
         self.balance = float(starting_balance)
         self.starting_balance = float(starting_balance)
@@ -16,7 +21,13 @@ class PaperBroker:
         self.trades: list[Trade] = []
 
     def open_position(self, side: Side, price: float) -> Position | None:
-        if self.position is not None or not math.isfinite(price) or price <= 0:
+        if (
+            self.position is not None
+            or isinstance(price, bool)
+            or not isinstance(price, (int, float))
+            or not math.isfinite(price)
+            or price <= 0
+        ):
             return None
         cfg = self.risk.config
         execution_price = price * (1 + cfg.slippage_rate) if side == Side.LONG else price * (1 - cfg.slippage_rate)
@@ -34,7 +45,13 @@ class PaperBroker:
 
     def close_position(self, price: float, reason: str = "signal") -> Trade | None:
         pos = self.position
-        if pos is None or not math.isfinite(price) or price <= 0:
+        if (
+            pos is None
+            or isinstance(price, bool)
+            or not isinstance(price, (int, float))
+            or not math.isfinite(price)
+            or price <= 0
+        ):
             return None
         cfg = self.risk.config
         execution_price = price * (1 - cfg.slippage_rate) if pos.side == Side.LONG else price * (1 + cfg.slippage_rate)
@@ -53,10 +70,21 @@ class PaperBroker:
     def apply_funding(self, mark_price: float, funding_rate: float | None = None) -> float:
         """Apply one funding event; positive rates charge longs and credit shorts."""
         pos = self.position
-        if pos is None or not math.isfinite(mark_price) or mark_price <= 0:
+        if (
+            pos is None
+            or isinstance(mark_price, bool)
+            or not isinstance(mark_price, (int, float))
+            or not math.isfinite(mark_price)
+            or mark_price <= 0
+        ):
             return 0.0
         rate = self.risk.config.funding_rate_per_8h if funding_rate is None else funding_rate
-        if not math.isfinite(rate) or not -0.1 < rate < 0.1:
+        if (
+            isinstance(rate, bool)
+            or not isinstance(rate, (int, float))
+            or not math.isfinite(rate)
+            or not -0.1 < rate < 0.1
+        ):
             raise ValueError("funding_rate must be finite and between -0.1 and 0.1")
         direction = 1.0 if pos.side == Side.LONG else -1.0
         cost = mark_price * pos.quantity * rate * direction
@@ -86,7 +114,12 @@ class PaperBroker:
         return None
 
     def equity(self, mark_price: float | None = None) -> float:
-        if mark_price is not None and (not math.isfinite(mark_price) or mark_price <= 0):
+        if mark_price is not None and (
+            isinstance(mark_price, bool)
+            or not isinstance(mark_price, (int, float))
+            or not math.isfinite(mark_price)
+            or mark_price <= 0
+        ):
             raise ValueError("mark_price must be a finite positive number")
         if self.position is None or mark_price is None:
             return self.balance
