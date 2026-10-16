@@ -34,7 +34,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.title("📈 PaperBot Market Lab")
-st.caption("Public crypto market data · live news headlines · simulated backtests")
+st.caption("Public OKX perpetual-swap market data · live news headlines · simulated backtests")
 
 st.markdown(
     '<div class="risk-note"><b>Paper trading only.</b> No exchange keys are used and '
@@ -48,7 +48,7 @@ def get_candles(symbol: str, interval: str, limit: int) -> tuple[list[Candle], s
     diagnostics: list[str] = []
     candles, source = load_public_klines(
         symbol=symbol, interval=interval, limit=limit, cache_dir=ROOT / "candles",
-        diagnostics=diagnostics,
+        diagnostics=diagnostics, okx_only=True,
     )
     return candles, source, diagnostics
 
@@ -93,7 +93,7 @@ with st.spinner(f"Loading public {symbol} {interval} candles…"):
 
 if market_error:
     st.error(f"Market data unavailable: {market_error}")
-    st.info("All configured public providers will be retried on the next refresh. No stale candle cache is silently used.")
+    st.info("The dashboard is configured to request OKX perpetual-swap data only. Binance/Bybit access restrictions are not retried or bypassed, and no stale candle cache is silently used. OKX will be retried on the next refresh.")
 else:
     latest = candles[-1]
     now = datetime.now(timezone.utc)
@@ -130,7 +130,7 @@ else:
         if "Kraken spot proxy" in market_source:
             st.warning("Binance and Bybit futures data were unavailable. This is a SPOT-market proxy, not futures data; it excludes futures basis, funding, and contract-specific behavior. Do not use this run to validate a futures strategy.")
         elif "OKX USDT perpetual swap" in market_source:
-            st.warning("Binance and Bybit were unavailable, so this run uses OKX USDT perpetual-swap candles. Contract specifications and funding behavior can differ by exchange; treat results as exploratory.")
+            st.warning("This dashboard is configured to use OKX USDT perpetual-swap candles only because Binance/Bybit endpoints are blocked from some hosting regions. Contract specifications and funding behavior differ by exchange; these are exploratory OKX-based simulations, not Binance-specific results.")
         elif "Bybit USDT linear perpetual" in market_source:
             st.warning("Binance was unavailable, so this backtest uses Bybit linear-perpetual candles. Do not compare results across providers as if their candles were identical.")
         prices = pd.DataFrame({
