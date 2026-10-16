@@ -58,6 +58,13 @@ connectivity. Even when enabled, this adapter's order URL is fixed to Bybit's de
 The worker has not been switched to route strategy signals into exchange demo orders; that
 needs separate end-to-end tests and a reviewed integration before it is considered active.
 
+For a **Render-side, unauthenticated reachability test** (this is the useful test for
+checking whether the demo hostname can be reached from the worker's network), set
+`PAPERBOT_CHECK_BYBIT_DEMO_CONNECTIVITY=true` in the worker environment and redeploy.
+On startup it performs one GET to `/v5/market/time` on the demo host and logs reachable /
+failed status. This does not test API-key authentication and does not place orders. Leave
+the flag unset after diagnosis if you do not need the extra check.
+
 Official API documentation: https://bybit-exchange.github.io/docs/v5/demo
 
 ## Persistent background paper worker
