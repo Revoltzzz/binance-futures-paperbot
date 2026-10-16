@@ -67,6 +67,29 @@ the flag unset after diagnosis if you do not need the extra check.
 
 Official API documentation: https://bybit-exchange.github.io/docs/v5/demo
 
+## OKX Demo Trading fallback
+
+The deployed Render worker's opt-in Bybit Demo Trading endpoint probe returned HTTP 403,
+so Bybit demo access is not currently usable from that worker's network. The code therefore
+includes an optional OKX Demo Trading client as the next candidate. OKX documents demo
+trading through its REST API with the mandatory `x-simulated-trading: 1` header; this
+client always sets that header and uses only `OKX_DEMO_*` credentials. See the
+[official OKX API guide](https://www.okx.com/docs-v5) for the demo API setup. Regional
+OKX account domains can differ; this initial client uses the global `www.okx.com` host.
+
+To test authenticated demo wallet access, create an API key while Demo Trading is selected,
+then configure these variables in the environment running the dashboard:
+
+- `OKX_DEMO_API_KEY`
+- `OKX_DEMO_API_SECRET`
+- `OKX_DEMO_API_PASSPHRASE`
+
+The dashboard's OKX wallet check is read-only. Demo order placement remains disabled unless
+`PAPERBOT_ENABLE_OKX_DEMO_ORDERS=true` is explicitly set. Neither the OKX nor Bybit demo
+client is wired into the background strategy loop yet; the worker continues using its
+internal simulator until exchange-demo order placement and reconciliation are separately
+integrated and tested. Do not put live API credentials in these variables.
+
 ## Persistent background paper worker
 
 The Streamlit dashboard is for viewing and manual analysis. For an always-on paper session, this repository also includes a separate worker process and a SQLite state store. The worker polls completed public candles, saves the virtual account, open position, risk state, pending signal, recent candle history and trade journal to SQLite, and uses revision checks to prevent two worker instances from silently overwriting each other. The worker defaults to Binance-only mode. The hosted Render configuration explicitly sets **`okx-only` paper research mode** because the current deployment cannot access Binance/Bybit public market-data endpoints. In this mode it requests only OKX USDT perpetual swaps, labels the source, and does not claim the results represent Binance execution. Kraken spot proxy candles are never accepted by the persistent worker. Software cannot legitimately remove an exchange's regional eligibility restriction; use an exchange/API endpoint you are eligible to access if Binance-specific validation is required. The worker also pauses if candle history has a gap or data is stale.
