@@ -297,3 +297,22 @@ def test_restore_rejects_boolean_open_position_numbers():
         state["broker"]["position"][field] = True
         with pytest.raises(ValueError, match="must not be booleans"):
             PaperTradingSession.from_dict(state)
+
+
+
+def test_restore_rejects_malformed_entry_timestamp():
+    import pytest
+
+    for invalid in (True, "1800000300000", 1.5, 0, -1):
+        state = _session().to_dict()
+        state["entry_timestamp"] = invalid
+        with pytest.raises(ValueError, match="entry timestamp must be a positive integer or null"):
+            PaperTradingSession.from_dict(state)
+
+
+def test_restore_accepts_null_entry_timestamp():
+    session = _session()
+    state = session.to_dict()
+    state["entry_timestamp"] = None
+    restored = PaperTradingSession.from_dict(state)
+    assert restored.entry_timestamp is None
