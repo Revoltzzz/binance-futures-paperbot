@@ -143,6 +143,25 @@ def run_cycle(store: SQLitePaperStore, *, symbol: str, interval: str,
     session = PaperTradingSession.from_dict(state)
     if session.symbol != symbol.upper() or session.interval != interval:
         raise ValueError("Stored paper account does not match configured symbol/interval")
+    # PR #32 corrected the configured OKX provider label. Older persisted
+    # sessions may carry the former "(fallback)" label; migrate only this exact
+    # known alias and only its corresponding label-change pause. Never clear a
+    # performance, data-gap, daily-loss, or other unrelated pause.
+    legacy_okx_source = "OKX USDT perpetual swap (fallback)"
+    canonical_okx_source = "OKX USDT perpetual swap"
+    legacy_label_pause = (
+        f"Market-data provider changed from {legacy_okx_source} to {canonical_okx_source}. "
+        "Reset the session before continuing so prices from different providers are not mixed."
+    )
+    if (
+        market_data_mode == "okx-only"
+        and session.market_source == legacy_okx_source
+        and market_source == canonical_okx_source
+        and session.paused_reason == legacy_label_pause
+    ):
+        session.market_source = canonical_okx_source
+        session.paused_reason = None
+        LOG.warning("Migrated legacy OKX source label; underlying provider identity is unchanged.")
     previous_pause_reason = session.paused_reason
     # Fail closed when recent realized performance is persistently negative.
     # This is a safety circuit breaker, not an optimizer: it never changes

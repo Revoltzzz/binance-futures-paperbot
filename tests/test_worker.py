@@ -386,3 +386,87 @@ def test_okx_only_mode_rejects_fallback_label_and_does_not_create_account(tmp_pa
             strategy_name="ema", market_data_mode="okx-only",
         )
     assert store.load("ETHUSDT:5m") is None
+
+
+def test_worker_migrates_only_known_legacy_okx_label_pause(tmp_path, monkeypatch):
+    start = 1_800_000_000_000
+    candles = _candles(start, 2)
+    clock = {"now_ms": start + 600_000 + 60_000}
+
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            return datetime.fromtimestamp(clock["now_ms"] / 1000, tz=timezone.utc)
+
+    monkeypatch.setattr(worker, "datetime", Clock)
+    source = {"name": "OKX USDT perpetual swap (fallback)"}
+    monkeypatch.setattr(
+        worker, "load_public_klines",
+        lambda **kwargs: (list(candles), source["name"]),
+    )
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    worker.run_cycle(
+        store, symbol="ETHUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema", market_data_mode="derivatives-fallback",
+    )
+
+    loaded = store.load("ETHUSDT:5m")
+    assert loaded is not None
+    revision, state = loaded
+    state["paused_reason"] = (
+        "Market-data provider changed from OKX USDT perpetual swap (fallback) "
+        "to OKX USDT perpetual swap. Reset the session before continuing so "
+        "prices from different providers are not mixed."
+    )
+    store.save("ETHUSDT:5m", state, expected_revision=revision)
+
+    candles.append(_candles(candles[-1].timestamp + 300_000, 1)[0])
+    clock["now_ms"] = candles[-1].timestamp + 300_000 + 60_000
+    source["name"] = "OKX USDT perpetual swap"
+    message = worker.run_cycle(
+        store, symbol="ETHUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema", market_data_mode="okx-only",
+    )
+
+    after = store.load("ETHUSDT:5m")
+    assert "Processed 1 candle(s)" in message
+    assert after is not None
+    assert after[1]["market_source"] == "OKX USDT perpetual swap"
+    assert after[1]["paused_reason"] is None
+
+
+def test_worker_does_not_clear_unrelated_pause_during_okx_label_migration(tmp_path, monkeypatch):
+    import pytest
+
+    start = 1_800_000_000_000
+    candles = _candles(start, 2)
+
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            return datetime.fromtimestamp((start + 600_000 + 60_000) / 1000, tz=timezone.utc)
+
+    monkeypatch.setattr(worker, "datetime", Clock)
+    monkeypatch.setattr(
+        worker, "load_public_klines",
+        lambda **kwargs: (list(candles), "OKX USDT perpetual swap"),
+    )
+    store = SQLitePaperStore(tmp_path / "paper.sqlite")
+    worker.run_cycle(
+        store, symbol="ETHUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema", market_data_mode="derivatives-fallback",
+    )
+    loaded = store.load("ETHUSDT:5m")
+    assert loaded is not None
+    revision, state = loaded
+    state["paused_reason"] = "Performance circuit breaker: manual review required."
+    store.save("ETHUSDT:5m", state, expected_revision=revision)
+
+    message = worker.run_cycle(
+        store, symbol="ETHUSDT", interval="5m", starting_balance=1000,
+        strategy_name="ema", market_data_mode="okx-only",
+    )
+    after = store.load("ETHUSDT:5m")
+    assert "PAUSED" in message
+    assert after is not None
+    assert after[1]["paused_reason"] == "Performance circuit breaker: manual review required."
