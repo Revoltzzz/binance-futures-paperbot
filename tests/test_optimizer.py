@@ -2,6 +2,7 @@ import pytest
 
 from paperbot.data import demo_candles
 from paperbot.optimizer import optimize_chronologically
+from paperbot.backtest import run_backtest
 
 
 def test_optimizer_selects_on_validation_and_tests_only_selected_candidate():
@@ -76,4 +77,28 @@ def test_optimizer_rejects_non_candle_items():
 def test_optimizer_rejects_invalid_funding_inputs(funding_rates):
     with pytest.raises(ValueError, match="funding"):
         optimize_chronologically(demo_candles(300), funding_rates=funding_rates)
+
+@pytest.mark.parametrize("balance", [float("nan"), float("inf"), float("-inf"), 0, -1])
+def test_backtest_rejects_invalid_starting_balance(balance):
+    with pytest.raises(ValueError, match="finite and positive"):
+        run_backtest(demo_candles(120), starting_balance=balance)
+
+
+def test_backtest_rejects_malformed_candle_history():
+    candles = demo_candles(120)
+    candles[50] = {"timestamp": candles[50].timestamp}
+    with pytest.raises(ValueError, match="valid Candle objects"):
+        run_backtest(candles)
+
+
+@pytest.mark.parametrize("funding_rates", [{1: float("nan")}, {1: float("inf")}, {-1: 0.01}, {1.5: 0.01}, {1: True}, []])
+def test_backtest_rejects_invalid_funding_rates(funding_rates):
+    with pytest.raises(ValueError, match="funding"):
+        run_backtest(demo_candles(120), funding_rates=funding_rates)
+
+
+def test_backtest_rejects_malformed_warmup_history():
+    candles = demo_candles(120)
+    with pytest.raises(ValueError, match="warmup_candles"):
+        run_backtest(candles, warmup_candles=[{"timestamp": candles[0].timestamp - 1}])
 
