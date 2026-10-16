@@ -277,3 +277,23 @@ def test_restore_accepts_valid_broker_trade_journal_and_event():
     assert len(restored.broker.trades) == 1
     assert len(restored.trades) == 1
     assert len(restored.events) == 1
+
+
+def test_restore_rejects_boolean_open_position_numbers():
+    import pytest
+
+    for field in ("quantity", "entry_price", "stop_price", "take_profit_price", "entry_fee", "funding_cost"):
+        session = _session()
+        state = session.to_dict()
+        state["broker"]["position"] = {
+            "side": "long",
+            "quantity": 1.0,
+            "entry_price": 100.0,
+            "stop_price": 99.0,
+            "take_profit_price": 102.0,
+            "entry_fee": 0.1,
+            "funding_cost": 0.0,
+        }
+        state["broker"]["position"][field] = True
+        with pytest.raises(ValueError, match="must not be booleans"):
+            PaperTradingSession.from_dict(state)

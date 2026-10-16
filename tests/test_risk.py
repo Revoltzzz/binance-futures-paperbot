@@ -37,3 +37,15 @@ def test_daily_loss_limit():
 def test_invalid_config_rejected():
     with pytest.raises(ValueError):
         RiskConfig(risk_per_trade=0.5)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "risk_per_trade", "stop_loss_pct", "reward_risk", "max_leverage",
+        "fee_rate", "max_daily_loss_pct", "slippage_rate", "funding_rate_per_8h",
+    ],
+)
+def test_risk_config_rejects_boolean_values(field):
+    with pytest.raises(ValueError, match="not booleans"):
+        RiskConfig(**{field: True})
