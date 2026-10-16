@@ -152,6 +152,9 @@ class PaperTradingSession:
         if interval not in INTERVAL_MS:
             raise ValueError("Snapshot has an unsupported candle interval")
         duration = INTERVAL_MS[interval]
+        for candle in history:
+            if candle.timestamp % duration != 0:
+                raise ValueError("Snapshot candle timestamp is not aligned to its interval")
         for previous, current in zip(history, history[1:]):
             if current.timestamp - previous.timestamp != duration:
                 raise ValueError("Snapshot candle history is gapped, duplicated, or out of order")
@@ -229,8 +232,18 @@ class PaperTradingSession:
         raw_signal = state.get("pending_signal")
         session.pending_signal = Side(raw_signal) if raw_signal else None
         session.session_day = datetime.fromisoformat(state["session_day"]).date()
-        session.session_start_equity = float(state["session_start_equity"])
-        session.daily_halted = bool(state["daily_halted"])
+        try:
+            session_start_equity = float(state["session_start_equity"])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("Snapshot session-start equity is invalid") from exc
+        # A NaN or non-positive baseline can silently disable the daily-loss guard
+        # after a restart because comparisons against NaN are always false.
+        if not math.isfinite(session_start_equity) or session_start_equity <= 0:
+            raise ValueError("Snapshot session-start equity must be finite and positive")
+        session.session_start_equity = session_start_equity
+        if not isinstance(state.get("daily_halted"), bool):
+            raise ValueError("Snapshot daily_halted flag must be boolean")
+        session.daily_halted = state["daily_halted"]
         session.entry_timestamp = state.get("entry_timestamp")
         session.paused_reason = state.get("paused_reason")
         session.trades = list(state.get("trades", []))
