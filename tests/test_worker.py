@@ -517,3 +517,11 @@ def test_worker_does_not_poll_market_data_while_safety_paused(tmp_path, monkeypa
     )
     assert after is not None and after[0] == paused_revision
     assert after[1]["paused_reason"] == state["paused_reason"]
+
+
+def test_experimental_strategy_uses_separate_session_without_changing_ema_key():
+    assert worker._session_id("ETHUSDT", "5m", "ema") == "ETHUSDT:5m"
+    assert worker._session_id("ETHUSDT", "5m", "break-retest") == "ETHUSDT:5m:break-retest"
+    assert worker._session_id("ethusdt", "5m", "break-retest") != worker._session_id(
+        "ETHUSDT", "5m", "ema"
+    )
