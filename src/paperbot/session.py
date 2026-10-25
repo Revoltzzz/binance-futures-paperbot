@@ -14,7 +14,7 @@ from .models import Candle, Side
 from .paper import PaperBroker
 from .models import Position, Trade
 from .risk import RiskConfig, RiskManager
-from .strategy import BreakRetestStrategy, EmaCrossStrategy, RsiMeanReversionStrategy
+from .strategy import AtrVolatilityBreakoutStrategy, BreakRetestStrategy, EmaCrossStrategy, RsiMeanReversionStrategy
 
 
 def _utc_day(timestamp: int):
@@ -46,8 +46,8 @@ class PaperTradingSession:
             raise ValueError(f"Unsupported interval: {interval}")
         if not initial_candles:
             raise ValueError("initial_candles must not be empty")
-        if strategy_name not in {"ema", "break-retest", "rsi-reversion"}:
-            raise ValueError("strategy_name must be ema, break-retest, or rsi-reversion")
+        if strategy_name not in {"ema", "break-retest", "rsi-reversion", "atr-breakout"}:
+            raise ValueError("strategy_name must be ema, break-retest, rsi-reversion, or atr-breakout")
         if any(
             current.timestamp <= previous.timestamp
             for previous, current in zip(initial_candles, initial_candles[1:])
@@ -63,8 +63,10 @@ class PaperTradingSession:
             self.strategy = EmaCrossStrategy(fast_period=fast_period, slow_period=slow_period)
         elif strategy_name == "break-retest":
             self.strategy = BreakRetestStrategy()
-        else:
+        elif strategy_name == "rsi-reversion":
             self.strategy = RsiMeanReversionStrategy()
+        else:
+            self.strategy = AtrVolatilityBreakoutStrategy()
         self.broker = PaperBroker(self.starting_balance)
         self.history = list(initial_candles[-500:])
         self.last_timestamp = initial_candles[-1].timestamp

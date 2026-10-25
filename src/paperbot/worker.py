@@ -28,7 +28,7 @@ def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
 
 def _parse_strategy_names(configured: str | None, fallback: str = "ema") -> tuple[str, ...]:
     """Parse one or more isolated paper strategies without silently ignoring typos."""
-    supported = {"ema", "break-retest", "rsi-reversion"}
+    supported = {"ema", "break-retest", "rsi-reversion", "atr-breakout"}
     raw_names = configured.split(",") if configured is not None else [fallback]
     names = tuple(name.strip() for name in raw_names)
     if not names or any(not name for name in names):

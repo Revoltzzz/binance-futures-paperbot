@@ -16,7 +16,7 @@ def test_optimizer_selects_on_validation_and_tests_only_selected_candidate():
     assert report.selected_test is not None
     tested_candidates = [candidate.name for candidate in report.candidates if candidate.test is not None]
     assert tested_candidates == [report.selected_name]
-    assert report.candidates[0].validation is not None
+    assert report.candidates[0].validation is not None\n    names = {candidate.name for candidate in report.candidates}\n    assert "atr-breakout-20-14-50" in names\n    assert "atr-breakout-15-10-30" in names\n    assert "rsi-reversion-14-20" in names
 
 
 def test_optimizer_refuses_too_little_data():
