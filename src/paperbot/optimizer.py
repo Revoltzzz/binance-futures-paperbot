@@ -8,7 +8,7 @@ import math
 
 from .backtest import BacktestResult, run_backtest
 from .models import Candle
-from .strategy import BreakRetestStrategy, EmaCrossStrategy
+from .strategy import (\n    AtrVolatilityBreakoutStrategy, BreakRetestStrategy,\n    EmaCrossStrategy, RsiMeanReversionStrategy,\n)
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ def default_candidates() -> tuple[Candidate, ...]:
         Candidate("ema-8-30", EmaCrossStrategy(8, 30)),
         Candidate("ema-10-30", EmaCrossStrategy(10, 30)),
         Candidate("break-retest-10-30", BreakRetestStrategy(10, 30)),
-        Candidate("break-retest-20-50", BreakRetestStrategy(20, 50)),
+        Candidate("break-retest-20-50", BreakRetestStrategy(20, 50)),\n        Candidate("atr-breakout-20-14-50", AtrVolatilityBreakoutStrategy(20, 14, 50, 0.002)),\n        Candidate("atr-breakout-15-10-30", AtrVolatilityBreakoutStrategy(15, 10, 30, 0.0015)),\n        Candidate("rsi-reversion-14-20", RsiMeanReversionStrategy(14, 20, 30, 70, 2.0)),
     )
 
 
