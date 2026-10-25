@@ -255,3 +255,32 @@ The final test period is not scored for rejected candidates, reducing the tempta
 ### Render worker market-data source
 
 The Render worker is configured for `okx-only` paper research mode. This deliberately uses public OKX USDT perpetual-swap candles and does not request Binance or Bybit endpoints, avoiding repeated calls to endpoints that reject this deployment. Session results are **OKX-specific research, not Binance backtest results**. To use Binance data, confirm the deployment's eligibility with Binance and change the source mode only when Binance's endpoint is legitimately available to that environment. This is not a proxy or location workaround.
+
+### Deterministic paper risk alerts
+
+The `paperbot.alerts.evaluate_risk_alerts(...)` helper evaluates a paper-account
+snapshot for daily loss, peak-to-current drawdown, stale candles, and volatility
+spikes. It returns structured alerts with observed values, thresholds, severity,
+and a recommendation to review/pause new entries. It has no network, exchange,
+or order-execution side effects.
+
+Example:
+
+```python
+from paperbot.alerts import evaluate_risk_alerts
+
+alerts = evaluate_risk_alerts(
+    current_equity=970.0,
+    day_start_equity=1000.0,
+    peak_equity=1020.0,
+    candle_age_seconds=120,
+    volatility_pct=0.012,
+)
+```
+
+Thresholds are configurable and expressed as decimal fractions (0.03 means 3%).
+The caller must supply a trustworthy account snapshot and volatility estimate.
+Invalid or non-finite inputs raise `ValueError`. These alerts are an evaluation
+primitive; this change does not wire a notification service or alter worker
+execution, and it does not claim that a pause has actually been applied.
+
