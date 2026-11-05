@@ -267,6 +267,34 @@ tv_symbol = symbol.replace("USDT", "USDT.P")
 tv_url = f"https://www.tradingview.com/chart/?symbol=OKX%3A{tv_symbol}"
 st.link_button("Open this perpetual market in TradingView", tv_url, use_container_width=True)
 
+# Authenticated, receive-only TradingView alert inbox.
+import json
+import os
+from urllib.request import Request, urlopen
+
+st.subheader("TradingView alert inbox")
+tv_api_url = os.getenv("TRADINGVIEW_ALERTS_API_URL", "").rstrip("/")
+tv_secret = os.getenv("TRADINGVIEW_WEBHOOK_SECRET", "")
+if tv_api_url and tv_secret:
+    try:
+        request = Request(
+            tv_api_url + "/alerts",
+            headers={"Authorization": f"Bearer {tv_secret}", "Accept": "application/json"},
+        )
+        with urlopen(request, timeout=2.5) as response:
+            inbound = json.loads(response.read().decode("utf-8")).get("alerts", [])
+        if inbound:
+            st.dataframe(pd.DataFrame(inbound), use_container_width=True, hide_index=True)
+        else:
+            st.info("No TradingView alerts have arrived yet.")
+    except Exception as exc:
+        st.warning(f"TradingView alert inbox is temporarily unavailable: {type(exc).__name__}")
+else:
+    st.info(
+        "Configure TRADINGVIEW_ALERTS_API_URL and TRADINGVIEW_WEBHOOK_SECRET "
+        "in this analyst service after deploying the webhook receiver."
+    )
+
 # TradingView's public Advanced Chart widget is embedded separately from the
 # analyst's OKX candle feed. It provides TradingView's own chart/data and tools;
 # bot-computed levels remain visible on the Plotly analyst chart above.
