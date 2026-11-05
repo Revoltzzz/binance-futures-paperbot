@@ -1,4 +1,4 @@
-"""AI market analyst page: explainable technical signals + RSS context + TradingView link."""
+"""Personal AI market analyst with session-based personal risk settings."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -10,17 +10,30 @@ from streamlit_autorefresh import st_autorefresh
 
 from paperbot.ai_analyst import analyze_market, classify_news_sentiment
 from paperbot.news import NewsError, fetch_latest_news
+from paperbot.personal_profile import DEFAULT_PROFILE, normalise_profile
 from paperbot.public_market_data import load_public_klines
 
 st.set_page_config(page_title="AI Market Analyst", page_icon="🧠", layout="wide")
-st.title("🧠 Personal AI Market Analyst")
-st.caption("BTC · ETH · SOL · XRP | Scalping + intraday | Recommendations only")
-st.warning("PAPER-ONLY / MANUAL APPROVAL. This page never places orders. Signals are rule-based research candidates, not financial advice.")
+if "personal_trading_profile" not in st.session_state:
+    st.session_state.personal_trading_profile = dict(DEFAULT_PROFILE)
+profile = normalise_profile(st.session_state.personal_trading_profile)
+
+st.title("🧠 Your Personal AI Market Analyst")
+st.caption("Balanced risk profile · SOL-focused scalping by default · BTC / ETH / SOL / XRP")
+st.warning("PAPER-ONLY / MANUAL APPROVAL. This page never places orders. Signals are deterministic research candidates, not financial advice.")
+st.info(
+    f"Your profile: **{profile['risk_mode']}** · {profile['preferred_symbol']} · "
+    f"{profile['trading_style']} · {profile['risk_per_trade_pct']:.1f}% reference risk/trade · "
+    f"{profile['minimum_risk_reward']:.2f}R minimum planned reward/risk. "
+    "Edit it on My Trading Profile."
+)
 
 with st.sidebar:
-    st.header("Analysis settings")
-    symbol = st.selectbox("Market", ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"])
-    mode = st.radio("Trading style", ["scalping", "intraday"], horizontal=True)
+    st.header("Your analysis settings")
+    symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"]
+    symbol = st.selectbox("Market", symbols, index=symbols.index(profile["preferred_symbol"]))
+    modes = ["scalping", "intraday"]
+    mode = st.radio("Trading style", modes, index=modes.index(profile["trading_style"]), horizontal=True)
     timeframe = st.selectbox("Chart timeframe", ["1m", "5m", "15m", "1h"], index=1 if mode == "scalping" else 2)
     limit = st.slider("Completed candles", 100, 1000, 400, 50)
     auto_refresh = st.checkbox("Auto-refresh market and news", value=True)
@@ -46,7 +59,10 @@ def news_data():
 try:
     with st.spinner(f"Loading {symbol} {timeframe} perpetual candles…"):
         candles, provider = market_data(symbol, timeframe, limit)
-    analysis = analyze_market(candles, symbol, timeframe, mode=mode)
+    analysis = analyze_market(
+        candles, symbol, timeframe, mode=mode,
+        min_score=float(profile["minimum_setup_score"]),
+    )
 except Exception as exc:
     st.error(f"Analysis unavailable: {type(exc).__name__}: {exc}")
     st.info("The analyst currently uses OKX USDT perpetual public candles. It will not silently substitute spot data.")
@@ -63,7 +79,7 @@ c1,c2,c3,c4 = st.columns(4)
 c1.metric("Last price", f"{analysis.last_price:,.6g}")
 c2.metric("Trend", analysis.trend)
 c3.metric("RSI (14)", "n/a" if analysis.rsi is None else f"{analysis.rsi:.1f}")
-c4.metric("AI-style setup score", f"{analysis.score:.1f}/6")
+c4.metric("Setup score", f"{analysis.score:.1f}/6")
 if analysis.signal == "LONG":
     st.success("LONG SETUP CANDIDATE — manual review required")
 elif analysis.signal == "SHORT":
@@ -77,6 +93,18 @@ if analysis.signal != "NO TRADE":
     b.metric("Stop loss", f"{analysis.stop_loss:,.6g}")
     c.metric("Target 1", f"{analysis.target_1:,.6g}")
     d.metric("Target 2", f"{analysis.target_2:,.6g}", f"{analysis.risk_reward_2:.1f}R")
+    if analysis.risk_reward_2 is not None and analysis.risk_reward_2 >= profile["minimum_risk_reward"]:
+        risk_usdt = profile["reference_capital_usdt"] * profile["risk_per_trade_pct"] / 100
+        stop_distance = abs(analysis.last_price - analysis.stop_loss)
+        estimated_qty = risk_usdt / stop_distance if stop_distance else 0
+        st.subheader("Your paper risk plan")
+        r1,r2,r3 = st.columns(3)
+        r1.metric("Risk budget", f"{risk_usdt:.2f} USDT")
+        r2.metric("Estimated base quantity", f"{estimated_qty:.8f}")
+        r3.metric("Estimated notional", f"{estimated_qty * analysis.last_price:.2f} USDT")
+        st.caption("Approximate sizing only; contract multipliers, lot sizes, fees, slippage and funding are excluded. This is not an exchange order quantity.")
+    else:
+        st.warning("Setup does not meet your minimum reward/risk preference. Treat it as NO TRADE.")
 
 with st.expander("Why the analyst reached this view", expanded=True):
     for reason in analysis.reasons:
@@ -84,12 +112,12 @@ with st.expander("Why the analyst reached this view", expanded=True):
     for warning in analysis.warnings:
         st.warning(warning)
 
-frame = pd.DataFrame({
-    "Close": [x.close for x in candles],
-    "EMA fast": [analysis.ema_fast if i == len(candles)-1 else None for i in range(len(candles))],
-}, index=[datetime.fromtimestamp(x.timestamp/1000, timezone.utc) for x in candles])
+frame = pd.DataFrame(
+    {"Close": [x.close for x in candles]},
+    index=[datetime.fromtimestamp(x.timestamp/1000, timezone.utc) for x in candles],
+)
 st.subheader("Market structure")
-st.line_chart(pd.DataFrame({"Close":[x.close for x in candles]}, index=frame.index), use_container_width=True)
+st.line_chart(frame, use_container_width=True)
 levels = [{"Type":"Support","Price":x} for x in analysis.support] + [{"Type":"Resistance","Price":x} for x in analysis.resistance]
 if levels:
     st.dataframe(pd.DataFrame(levels), use_container_width=True, hide_index=True)
