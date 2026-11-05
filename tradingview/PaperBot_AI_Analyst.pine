@@ -1,0 +1,69 @@
+//@version=6
+indicator("PaperBot AI Analyst — structure + alerts", overlay=true, max_lines_count=100, max_labels_count=100)
+
+// This script draws on the active TradingView chart. It is an indicator only:
+// it does not place orders and its alerts are notifications, not trade execution.
+fastLen = input.int(9, "Fast EMA", minval=2)
+slowLen = input.int(21, "Slow EMA", minval=3)
+trendLen = input.int(50, "Trend EMA", minval=10)
+pivotLen = input.int(5, "Structure pivot strength", minval=2, maxval=20)
+atrLen = input.int(14, "ATR period", minval=2)
+atrMult = input.float(1.5, "ATR stop multiple", minval=0.5, step=0.1)
+showVWAP = input.bool(true, "Show VWAP")
+showRisk = input.bool(true, "Show ATR entry / stop / targets")
+
+fast = ta.ema(close, fastLen)
+slow = ta.ema(close, slowLen)
+trend = ta.ema(close, trendLen)
+vwapValue = ta.vwap(hlc3)
+rsi = ta.rsi(close, 14)
+atr = ta.atr(atrLen)
+volAvg = ta.sma(volume, 20)
+volOk = volume > volAvg * 1.15
+
+plot(fast, "Fast EMA", color=color.aqua, linewidth=2)
+plot(slow, "Slow EMA", color=color.orange, linewidth=2)
+plot(trend, "Trend EMA", color=color.purple, linewidth=2)
+plot(showVWAP ? vwapValue : na, "VWAP", color=color.yellow, linewidth=2)
+
+ph = ta.pivothigh(high, pivotLen, pivotLen)
+pl = ta.pivotlow(low, pivotLen, pivotLen)
+var line resistanceLine = na
+var line supportLine = na
+if not na(ph)
+    if not na(resistanceLine)
+        line.delete(resistanceLine)
+    resistanceLine := line.new(bar_index-pivotLen, ph, bar_index, ph, extend=extend.right, color=color.new(color.red, 15), width=2)
+if not na(pl)
+    if not na(supportLine)
+        line.delete(supportLine)
+    supportLine := line.new(bar_index-pivotLen, pl, bar_index, pl, extend=extend.right, color=color.new(color.lime, 15), width=2)
+
+bull = fast > slow and close > trend and close > vwapValue and rsi >= 50 and rsi <= 68 and volOk
+bear = fast < slow and close < trend and close < vwapValue and rsi <= 50 and rsi >= 32 and volOk
+longSignal = bull and barstate.isconfirmed and not bull[1]
+shortSignal = bear and barstate.isconfirmed and not bear[1]
+
+plotshape(longSignal, title="Long candidate", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), text="LONG?", textcolor=color.black)
+plotshape(shortSignal, title="Short candidate", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), text="SHORT?", textcolor=color.white)
+
+var line entryLine = na
+var line stopLine = na
+var line targetOneLine = na
+var line targetTwoLine = na
+if showRisk and (longSignal or shortSignal)
+    for oldLine in array.from(entryLine, stopLine, targetOneLine, targetTwoLine)
+        if not na(oldLine)
+            line.delete(oldLine)
+    direction = longSignal ? 1.0 : -1.0
+    entry = close
+    stop = entry - direction * atr * atrMult
+    target1 = entry + direction * atr * atrMult * 1.5
+    target2 = entry + direction * atr * atrMult * 2.5
+    entryLine := line.new(bar_index, entry, bar_index+30, entry, color=color.blue, width=2)
+    stopLine := line.new(bar_index, stop, bar_index+30, stop, color=color.red, style=line.style_dashed, width=2)
+    targetOneLine := line.new(bar_index, target1, bar_index+30, target1, color=color.lime, style=line.style_dashed)
+    targetTwoLine := line.new(bar_index, target2, bar_index+30, target2, color=color.green, style=line.style_dotted)
+
+alertcondition(longSignal, "PaperBot LONG candidate", "PaperBot LONG candidate on {{ticker}} {{interval}} at {{close}}. Review risk and confirm manually.")
+alertcondition(shortSignal, "PaperBot SHORT candidate", "PaperBot SHORT candidate on {{ticker}} {{interval}} at {{close}}. Review risk and confirm manually.")
