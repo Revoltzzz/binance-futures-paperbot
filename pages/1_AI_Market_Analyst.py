@@ -210,9 +210,11 @@ for pivots, label, color in [(pivot_lows, "Rising/falling swing-low trendline", 
         first, second = pivots[-2], pivots[-1]
         x0 = frame["time"].iloc[offset + first[0]]
         x1 = frame["time"].iloc[-1]
-        fig.add_shape(type="line", x0=x0, y0=first[1], x1=x1, y1=second[1],
+        pivot_gap = max(1, second[0] - first[0])
+        projected_y = second[1] + ((second[1] - first[1]) / pivot_gap) * ((len(sample) - 1) - second[0])
+        fig.add_shape(type="line", x0=x0, y0=first[1], x1=x1, y1=projected_y,
                       line={"color": color, "width": 2, "dash": "dash"}, row=1, col=1)
-        fig.add_annotation(x=x1, y=second[1], text=label, showarrow=False,
+        fig.add_annotation(x=x1, y=projected_y, text=label, showarrow=False,
                            font={"size": 9, "color": color}, xanchor="right", row=1, col=1)
 
 if effective_signal in {"LONG", "SHORT"}:
