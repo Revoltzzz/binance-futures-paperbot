@@ -255,3 +255,34 @@ The final test period is not scored for rejected candidates, reducing the tempta
 ### Render worker market-data source
 
 The Render worker is configured for `okx-only` paper research mode. This deliberately uses public OKX USDT perpetual-swap candles and does not request Binance or Bybit endpoints, avoiding repeated calls to endpoints that reject this deployment. Session results are **OKX-specific research, not Binance backtest results**. To use Binance data, confirm the deployment's eligibility with Binance and change the source mode only when Binance's endpoint is legitimately available to that environment. This is not a proxy or location workaround.
+
+
+## TradingView alert webhook (receive-only)
+
+The optional webhook receiver accepts TradingView indicator alerts and exposes a
+read-only alert inbox to the AI analyst. It does not connect to an exchange, submit
+orders, or change the paper-trading worker.
+
+Deploy a separate Render web service from this repository using:
+- Build command: \`python -m pip install .\`
+- Start command: \`python -m paperbot.tradingview_webhook\`
+- Health check path: \`/healthz\`
+- Environment variable: \`TRADINGVIEW_WEBHOOK_SECRET\` (generate a private random
+  value of at least 24 characters; never commit it or paste it into source code).
+
+The service URL plus \`/tradingview/webhook\` is the webhook URL. The TradingView JSON
+alert message must include the same passphrase. The supplied Pine indicator has JSON
+LONG/SHORT alert messages with a placeholder; replace that placeholder in each alert
+with your private secret. Enable webhook URL in the alert's Notifications tab.
+TradingView requires 2FA for webhook alerts and cancels deliveries if the receiver
+takes longer than three seconds.
+
+To show received alerts in the analyst, set these environment variables on the
+existing analyst web service:
+- \`TRADINGVIEW_ALERTS_API_URL\`: base URL of the webhook service (without a path).
+- \`TRADINGVIEW_WEBHOOK_SECRET\`: the same private secret configured on the receiver.
+
+Set \`TRADINGVIEW_ALERTS_DB\` to a persistent-disk path if you attach a disk to the
+webhook service. Without a persistent disk, the default SQLite database is ephemeral
+and alert history can be lost when the service restarts. A free Render instance may
+spin down and is not suitable for time-critical webhook delivery.

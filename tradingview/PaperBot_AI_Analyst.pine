@@ -65,5 +65,5 @@ if showRisk and (longSignal or shortSignal)
     targetOneLine := line.new(bar_index, target1, bar_index+30, target1, color=color.lime, style=line.style_dashed)
     targetTwoLine := line.new(bar_index, target2, bar_index+30, target2, color=color.green, style=line.style_dotted)
 
-alertcondition(longSignal, "PaperBot LONG candidate", "PaperBot LONG candidate on {{ticker}} {{interval}} at {{close}}. Review risk and confirm manually.")
-alertcondition(shortSignal, "PaperBot SHORT candidate", "PaperBot SHORT candidate on {{ticker}} {{interval}} at {{close}}. Review risk and confirm manually.")
+alertcondition(longSignal, "PaperBot LONG candidate", '{"passphrase":"REPLACE_WITH_YOUR_SECRET","ticker":"{{ticker}}","exchange":"{{exchange}}","interval":"{{interval}}","close":"{{close}}","signal":"LONG","time":"{{timenow}}","strategy":"PaperBot AI Analyst"}')
+alertcondition(shortSignal, "PaperBot SHORT candidate", '{"passphrase":"REPLACE_WITH_YOUR_SECRET","ticker":"{{ticker}}","exchange":"{{exchange}}","interval":"{{interval}}","close":"{{close}}","signal":"SHORT","time":"{{timenow}}","strategy":"PaperBot AI Analyst"}')
