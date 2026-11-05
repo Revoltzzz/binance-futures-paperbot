@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 from paperbot.ai_analyst import analyze_market, classify_news_sentiment
@@ -265,6 +266,53 @@ st.caption("Chart levels are technical estimates, not guaranteed reversal points
 tv_symbol = symbol.replace("USDT", "USDT.P")
 tv_url = f"https://www.tradingview.com/chart/?symbol=OKX%3A{tv_symbol}"
 st.link_button("Open this perpetual market in TradingView", tv_url, use_container_width=True)
+
+# TradingView's public Advanced Chart widget is embedded separately from the
+# analyst's OKX candle feed. It provides TradingView's own chart/data and tools;
+# bot-computed levels remain visible on the Plotly analyst chart above.
+import json
+
+st.subheader("TradingView interactive chart")
+st.caption(
+    "This is an embedded TradingView chart for the same perpetual symbol. "
+    "Use its drawing toolbar for personal chart annotations; analyst-generated "
+    "entry, stop, target and structure levels remain on the chart above."
+)
+tv_widget_config = {
+    "autosize": True,
+    "symbol": f"OKX:{tv_symbol}",
+    "interval": timeframe,
+    "timezone": "Asia/Kolkata",
+    "theme": "dark",
+    "style": "1",
+    "locale": "en",
+    "enable_publishing": False,
+    "allow_symbol_change": True,
+    "hide_side_toolbar": False,
+    "details": True,
+    "hotlist": False,
+    "calendar": False,
+    "studies": ["STD;RSI", "STD;MACD"],
+    "support_host": "https://www.tradingview.com",
+}
+components.html(
+    f"""
+    <div class="tradingview-widget-container" style="height:720px;width:100%">
+      <div id="tradingview-analyst-chart" style="height:calc(100% - 32px);width:100%"></div>
+      <div class="tradingview-widget-copyright">
+        <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+          <span>View chart on TradingView</span>
+        </a>
+      </div>
+    </div>
+    <script src="https://s3.tradingview.com/tv.js"></script>
+    <script>
+      new TradingView.widget({json.dumps(tv_widget_config)});
+    </script>
+    """,
+    height=740,
+    scrolling=False,
+)
 
 st.divider()
 st.subheader("Live crypto news intelligence")
