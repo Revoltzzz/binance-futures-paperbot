@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 from paperbot.ai_analyst import analyze_market, classify_news_sentiment
 from paperbot.news import NewsError, fetch_latest_news
@@ -22,7 +23,11 @@ with st.sidebar:
     mode = st.radio("Trading style", ["scalping", "intraday"], horizontal=True)
     timeframe = st.selectbox("Chart timeframe", ["1m", "5m", "15m", "1h"], index=1 if mode == "scalping" else 2)
     limit = st.slider("Completed candles", 100, 1000, 400, 50)
+    auto_refresh = st.checkbox("Auto-refresh market and news", value=True)
     refresh = st.button("Refresh market + news", use_container_width=True)
+
+if auto_refresh:
+    st_autorefresh(interval=60_000, key="ai_analyst_refresh")
 
 if refresh:
     st.cache_data.clear()
