@@ -133,12 +133,27 @@ chart["VWAP (rolling 96)"] = (
     (typical * chart["Volume"]).rolling(96, min_periods=1).sum()
     / chart["Volume"].rolling(96, min_periods=1).sum().replace(0, float("nan"))
 )
+# Wilder-style RSI and standard MACD, calculated only from displayed completed candles.
+delta = chart["Close"].diff()
+gain = delta.clip(lower=0).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+loss = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+rs = gain / loss.replace(0, float("nan"))
+chart["RSI 14"] = 100 - (100 / (1 + rs))
+chart.loc[(loss == 0) & (gain > 0), "RSI 14"] = 100
+chart.loc[(loss == 0) & (gain == 0), "RSI 14"] = 50
+macd_fast = chart["Close"].ewm(span=12, adjust=False).mean()
+macd_slow = chart["Close"].ewm(span=26, adjust=False).mean()
+chart["MACD"] = macd_fast - macd_slow
+chart["MACD signal"] = chart["MACD"].ewm(span=9, adjust=False).mean()
+chart["MACD histogram"] = chart["MACD"] - chart["MACD signal"]
 
 st.subheader("Live candlestick chart · market structure")
-st.caption("Candles use completed OKX USDT-perpetual data. Horizontal levels are recent confirmed pivots; EMA/VWAP overlays are calculated from the displayed candle history.")
+st.caption("Candles use completed OKX USDT-perpetual data. EMA/VWAP, RSI and MACD are calculated from displayed completed candles. Dashed diagonal lines connect the latest two confirmed swing pivots and are candidate trendlines, not validated support.")
 fig = make_subplots(
-    rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.04,
-    row_heights=[0.78, 0.22], specs=[[{"secondary_y": False}], [{"secondary_y": False}]],
+    rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.035,
+    row_heights=[0.58, 0.12, 0.15, 0.15],
+    specs=[[{"secondary_y": False}], [{"secondary_y": False}],
+           [{"secondary_y": False}], [{"secondary_y": False}]],
 )
 fig.add_trace(go.Candlestick(
     x=chart.index, open=chart["Open"], high=chart["High"],
@@ -156,6 +171,54 @@ fig.add_trace(go.Bar(
     x=chart.index, y=chart["Volume"], name="Volume",
     marker={"color": "#78909c"}, opacity=0.55,
 ), row=2, col=1)
+fig.add_trace(go.Scatter(
+    x=chart.index, y=chart["RSI 14"], name="RSI 14",
+    line={"color": "#7e57c2", "width": 1.5},
+), row=3, col=1)
+fig.add_hline(y=70, line_dash="dot", line_color="#ef5350", row=3, col=1)
+fig.add_hline(y=50, line_dash="dot", line_color="#9e9e9e", row=3, col=1)
+fig.add_hline(y=30, line_dash="dot", line_color="#26a69a", row=3, col=1)
+fig.add_trace(go.Bar(
+    x=chart.index, y=chart["MACD histogram"], name="MACD histogram",
+    marker={"color": "#90a4ae"}, opacity=0.6,
+), row=4, col=1)
+fig.add_trace(go.Scatter(
+    x=chart.index, y=chart["MACD"], name="MACD",
+    line={"color": "#1976d2", "width": 1.4},
+), row=4, col=1)
+fig.add_trace(go.Scatter(
+    x=chart.index, y=chart["MACD signal"], name="MACD signal",
+    line={"color": "#ff9800", "width": 1.4},
+), row=4, col=1)
+
+# Draw candidate trendlines through the latest two confirmed local swing points.
+pivot_span = 3
+pivot_lows = [
+    i for i in range(pivot_span, len(chart) - pivot_span)
+    if chart["Low"].iloc[i] < chart["Low"].iloc[i-pivot_span:i].min()
+    and chart["Low"].iloc[i] < chart["Low"].iloc[i+1:i+pivot_span+1].min()
+]
+pivot_highs = [
+    i for i in range(pivot_span, len(chart) - pivot_span)
+    if chart["High"].iloc[i] > chart["High"].iloc[i-pivot_span:i].max()
+    and chart["High"].iloc[i] > chart["High"].iloc[i+1:i+pivot_span+1].max()
+]
+def add_projected_trendline(indices, column, label, color):
+    if len(indices) < 2:
+        return
+    first, second = indices[-2], indices[-1]
+    if second <= first:
+        return
+    y1, y2 = float(chart[column].iloc[first]), float(chart[column].iloc[second])
+    slope = (y2 - y1) / (second - first)
+    projected = y2 + slope * (len(chart) - 1 - second)
+    fig.add_trace(go.Scatter(
+        x=[chart.index[second], chart.index[-1]],
+        y=[y2, projected], mode="lines", name=label,
+        line={"color": color, "width": 2, "dash": "dash"},
+    ), row=1, col=1)
+add_projected_trendline(pivot_lows, "Low", "Rising/falling swing-low trendline", "#26a69a")
+add_projected_trendline(pivot_highs, "High", "Swing-high trendline", "#ef5350")
 
 for index, price in enumerate(analysis.support, start=1):
     fig.add_hline(y=price, line_dash="dot", line_color="#26a69a",
@@ -184,12 +247,14 @@ if analysis.signal in {"LONG", "SHORT"}:
     )
 
 fig.update_layout(
-    height=760, xaxis_rangeslider_visible=False,
+    height=1050, xaxis_rangeslider_visible=False,
     hovermode="x unified", legend={"orientation": "h", "y": 1.02},
     margin={"l": 10, "r": 10, "t": 35, "b": 10},
 )
 fig.update_yaxes(title_text="Price", row=1, col=1)
 fig.update_yaxes(title_text="Volume", row=2, col=1)
+fig.update_yaxes(title_text="RSI", range=[0, 100], row=3, col=1)
+fig.update_yaxes(title_text="MACD", row=4, col=1)
 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
 
 levels = [{"Type":"Support","Price":x} for x in analysis.support] + [{"Type":"Resistance","Price":x} for x in analysis.resistance]
