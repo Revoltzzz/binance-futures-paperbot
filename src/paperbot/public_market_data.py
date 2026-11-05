@@ -20,8 +20,8 @@ BYBIT_INTERVAL = {
     "1h": "60", "2h": "120", "4h": "240", "6h": "360", "12h": "720", "1d": "D",
 }
 OKX_URL = "https://www.okx.com/api/v5/market/candles"
-OKX_INTERVAL = {"5m": "5m", "15m": "15m", "1h": "1H"}
-OKX_SYMBOL = {"BTCUSDT": "BTC-USDT-SWAP", "ETHUSDT": "ETH-USDT-SWAP"}
+OKX_INTERVAL = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H"}
+OKX_SYMBOL = {"BTCUSDT": "BTC-USDT-SWAP", "ETHUSDT": "ETH-USDT-SWAP", "SOLUSDT": "SOL-USDT-SWAP", "XRPUSDT": "XRP-USDT-SWAP"}
 
 OKX_FUNDING_URL = "https://www.okx.com/api/v5/public/funding-rate-history"
 
