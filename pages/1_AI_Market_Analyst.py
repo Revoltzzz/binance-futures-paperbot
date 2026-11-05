@@ -112,16 +112,90 @@ with st.expander("Why the analyst reached this view", expanded=True):
     for warning in analysis.warnings:
         st.warning(warning)
 
-frame = pd.DataFrame(
-    {"Close": [x.close for x in candles]},
-    index=[datetime.fromtimestamp(x.timestamp/1000, timezone.utc) for x in candles],
+# Build an interactive OHLCV chart so the user can inspect the actual setup.
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+chart_rows = [
+    {
+        "Time": datetime.fromtimestamp(x.timestamp / 1000, timezone.utc),
+        "Open": x.open, "High": x.high, "Low": x.low,
+        "Close": x.close, "Volume": x.volume,
+    }
+    for x in candles
+]
+chart = pd.DataFrame(chart_rows).set_index("Time")
+chart["EMA 9"] = chart["Close"].ewm(span=9, adjust=False).mean()
+chart["EMA 21"] = chart["Close"].ewm(span=21, adjust=False).mean()
+chart["EMA 50"] = chart["Close"].ewm(span=50, adjust=False).mean()
+typical = (chart["High"] + chart["Low"] + chart["Close"]) / 3
+chart["VWAP (rolling 96)"] = (
+    (typical * chart["Volume"]).rolling(96, min_periods=1).sum()
+    / chart["Volume"].rolling(96, min_periods=1).sum().replace(0, float("nan"))
 )
-st.subheader("Market structure")
-st.line_chart(frame, use_container_width=True)
+
+st.subheader("Live candlestick chart · market structure")
+st.caption("Candles use completed OKX USDT-perpetual data. Horizontal levels are recent confirmed pivots; EMA/VWAP overlays are calculated from the displayed candle history.")
+fig = make_subplots(
+    rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.04,
+    row_heights=[0.78, 0.22], specs=[[{"secondary_y": False}], [{"secondary_y": False}]],
+)
+fig.add_trace(go.Candlestick(
+    x=chart.index, open=chart["Open"], high=chart["High"],
+    low=chart["Low"], close=chart["Close"], name="Price",
+), row=1, col=1)
+for column, color in [
+    ("EMA 9", "#00bcd4"), ("EMA 21", "#ff9800"),
+    ("EMA 50", "#9c27b0"), ("VWAP (rolling 96)", "#fdd835"),
+]:
+    fig.add_trace(go.Scatter(
+        x=chart.index, y=chart[column], mode="lines",
+        name=column, line={"width": 1.5, "color": color},
+    ), row=1, col=1)
+fig.add_trace(go.Bar(
+    x=chart.index, y=chart["Volume"], name="Volume",
+    marker={"color": "#78909c"}, opacity=0.55,
+), row=2, col=1)
+
+for index, price in enumerate(analysis.support, start=1):
+    fig.add_hline(y=price, line_dash="dot", line_color="#26a69a",
+                  annotation_text=f"S{index} {price:,.6g}", row=1, col=1)
+for index, price in enumerate(analysis.resistance, start=1):
+    fig.add_hline(y=price, line_dash="dot", line_color="#ef5350",
+                  annotation_text=f"R{index} {price:,.6g}", row=1, col=1)
+
+if analysis.signal in {"LONG", "SHORT"}:
+    fig.add_hrect(y0=analysis.entry_low, y1=analysis.entry_high,
+                  fillcolor="#2196f3", opacity=0.12, line_width=0,
+                  annotation_text="Entry zone", row=1, col=1)
+    for label, price, color, dash in [
+        ("Stop loss", analysis.stop_loss, "#ef5350", "dash"),
+        ("Target 1", analysis.target_1, "#66bb6a", "dash"),
+        ("Target 2", analysis.target_2, "#2e7d32", "dot"),
+    ]:
+        fig.add_hline(y=price, line_dash=dash, line_color=color,
+                      annotation_text=f"{label} {price:,.6g}", row=1, col=1)
+    fig.add_annotation(
+        x=chart.index[-1], y=analysis.last_price,
+        text=f"{analysis.signal} candidate · score {analysis.score:.1f}/6",
+        showarrow=True, arrowhead=2, ax=35, ay=-45,
+        bgcolor="#1b5e20" if analysis.signal == "LONG" else "#b71c1c",
+        font={"color": "white"}, row=1, col=1,
+    )
+
+fig.update_layout(
+    height=760, xaxis_rangeslider_visible=False,
+    hovermode="x unified", legend={"orientation": "h", "y": 1.02},
+    margin={"l": 10, "r": 10, "t": 35, "b": 10},
+)
+fig.update_yaxes(title_text="Price", row=1, col=1)
+fig.update_yaxes(title_text="Volume", row=2, col=1)
+st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
+
 levels = [{"Type":"Support","Price":x} for x in analysis.support] + [{"Type":"Resistance","Price":x} for x in analysis.resistance]
 if levels:
     st.dataframe(pd.DataFrame(levels), use_container_width=True, hide_index=True)
-st.caption("The companion Pine Script draws pivot support/resistance, EMAs, VWAP, ATR risk levels and alert markers directly on TradingView charts.")
+st.caption("Chart levels are technical estimates, not guaranteed reversal points. Confirm breakouts/retests and check liquidity before entering.")
 
 tv_symbol = symbol.replace("USDT", "USDT.P")
 tv_url = f"https://www.tradingview.com/chart/?symbol=OKX%3A{tv_symbol}"
