@@ -1,5 +1,6 @@
 from paperbot.ai_analyst import analyze_market, classify_news_sentiment
 from paperbot.models import Candle
+from paperbot.public_market_data import OKX_INTERVAL, OKX_SYMBOL
 
 
 def candles_from_closes(closes):
@@ -33,3 +34,8 @@ def test_news_sentiment_is_transparent_heuristic():
     assert classify_news_sentiment("Bitcoin ETF inflows surge") [0] == "BULLISH"
     assert classify_news_sentiment("Major exchange reports hack and exploit") [0] == "BEARISH"
     assert classify_news_sentiment("Market recap") [0] == "NEUTRAL"
+
+
+def test_okx_perpetual_coverage_includes_all_requested_assets_and_scalping_interval():
+    assert set(("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT")).issubset(OKX_SYMBOL)
+    assert OKX_INTERVAL["1m"] == "1m"
